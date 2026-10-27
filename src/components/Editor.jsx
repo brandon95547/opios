@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { MERGE_TAGS } from '../../shared/render.js';
 import { Dialog } from '../ui.jsx';
+import MediaPicker from './MediaPicker.jsx';
 
 const INSERTS = [
   { value: '{{first_name|there}}', label: 'First name, or “there”' },
@@ -58,11 +59,7 @@ function ImageDialog({ open, onSave, onClose }) {
   return (
     <Dialog open={open} onClose={onClose} title="Picture">
       <form onSubmit={(e) => { e.preventDefault(); if (src.trim()) onSave({ src: src.trim(), alt: alt.trim() }); }}>
-        <label className="field">
-          <span className="field-label">Picture’s web address</span>
-          <input value={src} onChange={(e) => setSrc(e.target.value)} placeholder="https://example.com/photo.jpg" type="url" required />
-          <span className="field-hint">The picture has to be online already (on your website, for example), so every reader’s mail app can load it.</span>
-        </label>
+        <MediaPicker label="Picture" value={src} onChange={setSrc} hint="Upload one, or give the address of a picture already online. Every reader’s mail app loads it from there." />
         <label className="field">
           <span className="field-label">Description</span>
           <input value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="What the picture shows" />

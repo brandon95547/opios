@@ -62,6 +62,12 @@ async function startOpios(options = {}) {
     const reply = type.includes('json') ? await res.json() : /^text\//.test(type) ? await res.text() : Buffer.from(await res.arrayBuffer());
     return { status: res.status, headers: res.headers, body: reply };
   };
+  // A request with a raw body (an upload), signed in like call().
+  const callRaw = async (method, url, buffer, headers = {}) => {
+    const res = await fetch(base + url, { method, headers: { ...(cookie ? { cookie } : {}), ...headers }, body: buffer });
+    const type = res.headers.get('content-type') || '';
+    return { status: res.status, body: type.includes('json') ? await res.json() : await res.text() };
+  };
   const waitUntilSent = async (id) => {
     for (let i = 0; i < 200; i += 1) {
       const c = await call('GET', `/api/campaigns/${id}`);
@@ -71,7 +77,7 @@ async function startOpios(options = {}) {
     throw new Error('Sending did not finish');
   };
   return {
-    opios, base, call, dataDir, waitUntilSent,
+    opios, base, call, callRaw, dataDir, waitUntilSent,
     forgetCookie: () => { cookie = ''; },
     async close() {
       server.closeAllConnections();
@@ -179,7 +185,7 @@ test('contacts: added by hand, imported from rows, exported; an import keeps uns
 
     const csv = await o.call('GET', '/api/contacts/export.csv');
     assert.match(csv.headers.get('content-disposition'), /attachment; filename="?opios-contacts-\d{4}-\d\d-\d\d\.csv/);
-    assert.match(csv.body, /bo@example.com,Bo,Diaz,subscribed,Customers/);
+    assert.match(csv.body, /bo@example.com,Bo,Diaz,subscribed,,Customers/);
 
     const bulk = await o.call('POST', '/api/contacts/bulk', { action: 'delete', ids: [annNow.id] });
     assert.equal(bulk.body.changed, 1);
@@ -365,5 +371,103 @@ test('an email cut off by a restart is marked failed, not sent twice', async () 
     await again.close();
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+});
+
+test('brands: updates go into the brand’s newsletter once, to its subscribers, who unsubscribe from it alone', async () => {
+  const smtp = await startSmtp();
+  const o = await startOpios();
+  try {
+    await o.call('POST', '/api/auth/setup', { username: 'me', password: 'long-enough-1' });
+    await o.call('PUT', '/api/settings/smtp', { provider: 'other', host: '127.0.0.1', port: smtp.port, security: 'none', user: 'mailer', pass: 'right-password', fromEmail: 'news@acme.test' });
+    await o.call('PUT', '/api/settings/general', { publicUrl: 'https://news.acme.test', ratePerMinute: 600, timeZone: 'America/New_York' });
+
+    const phansora = (await o.call('POST', '/api/brands', { name: 'Phansora', color: '#7c3aed', from_name: 'Phansora' })).body;
+    assert.equal(phansora.heading, 'Phansora Updates');
+    const skylanex = (await o.call('POST', '/api/brands', { name: 'Skylanex' })).body;
+    const talari = (await o.call('POST', `/api/brands/${phansora.id}/products`, { name: 'Talari' })).body.products[0];
+    await o.call('POST', '/api/updates', { product_id: talari.id, title: 'Spine templates', body: 'Five layouts\nfor every frame.', link: 'https://phansora.com/talari', happened_at: '2026-10-20T15:00:00Z' });
+    await o.call('POST', '/api/updates', { product_id: talari.id, title: 'Not ready yet', status: 'draft' });
+    assert.equal((await o.call('POST', '/api/updates', { product_id: talari.id, title: 'Bad link', link: 'javascript:alert(1)' })).status, 400);
+
+    // A script adds an update with an API key, naming a product that doesn't exist yet.
+    const key = (await o.call('POST', '/api/api-keys', { name: 'Deploys' })).body.key;
+    assert.match(key, /^opk_/);
+    const post = (k, body) => fetch(`${o.base}/api/v1/updates`, { method: 'POST', headers: { authorization: `Bearer ${k}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    assert.equal((await post('opk_wrong', { brand: 'Phansora', product: 'X', title: 'Y' })).status, 401);
+    const viaApi = await post(key, { brand: 'Phansora', product: 'Narrava Studio', title: 'Lyric captions', kind: 'improved' });
+    assert.equal(viaApi.status, 201);
+    assert.equal((await viaApi.json()).product_name, 'Narrava Studio');
+    assert.equal((await post(key, { brand: 'Nope', product: 'X', title: 'Y' })).status, 404);
+
+    await o.call('POST', '/api/contacts', { email: 'ann@example.com', first_name: 'Ann', brand_ids: [phansora.id, skylanex.id] });
+    await o.call('POST', '/api/contacts', { email: 'bo@example.com', brand_ids: [skylanex.id] });
+    const cy = (await o.call('POST', '/api/contacts', { email: 'cy@example.com', brand_ids: [phansora.id] })).body;
+    await o.call('POST', '/api/contacts/bulk', { action: 'unsubscribe_brand', brand_id: phansora.id, ids: [cy.id] });
+
+    const template = (await o.call('POST', '/api/templates', { starter: 'updates', brand_id: phansora.id })).body;
+    assert.equal(template.kind, 'blocks');
+    assert.equal(template.name, 'Phansora updates');
+    assert.match(template.html, /\{\{updates\}\}/);
+    assert.match(template.html, /#7c3aed/i);
+    const noMessage = { ...template.design, blocks: template.design.blocks.filter((b) => b.type !== 'content') };
+    assert.equal((await o.call('PUT', `/api/templates/${template.id}`, { name: 'x', brand_id: phansora.id, design: noMessage })).status, 400);
+
+    const send = async (subject) => {
+      const draft = (await o.call('POST', '/api/campaigns', { brand_id: phansora.id })).body;
+      assert.equal(draft.template_id, template.id, 'the brand’s own template');
+      await o.call('PUT', `/api/campaigns/${draft.id}`, { subject, body_html: '<p>Hi {{first_name}}</p>' });
+      assert.equal((await o.call('POST', '/api/campaigns/audience', { audience: draft.audience, brand_id: phansora.id })).body.count, 1);
+      assert.equal((await o.call('POST', `/api/campaigns/${draft.id}/send`)).status, 200);
+      return o.waitUntilSent(draft.id);
+    };
+    const first = await send('October');
+    assert.equal(first.sent, 1);
+    const mail = smtp.received.at(-1);
+    assert.deepEqual(mail.to, ['ann@example.com']);
+    assert.match(mail.raw, /^From: Phansora <news@acme\.test>$/m);
+    assert.match(mail.text, /Phansora Updates/);
+    assert.match(mail.text, /Spine templates/);
+    assert.match(mail.text, /Lyric captions/);
+    assert.match(mail.text, /Oct 20, 2026/);
+    assert.doesNotMatch(mail.text, /Not ready yet/);
+    const link = mail.raw.match(/https:\/\/news\.acme\.test\/u\/([A-Za-z0-9_-]+)\?b=(\d+)/);
+    assert.equal(Number(link[2]), phansora.id);
+
+    // Both updates went out, so the next newsletter has none to repeat.
+    const updates = (await o.call('GET', `/api/updates?brand_id=${phansora.id}`)).body;
+    assert.deepEqual(updates.filter((u) => u.sent).map((u) => u.title).sort(), ['Lyric captions', 'Spine templates']);
+    await send('November');
+    assert.doesNotMatch(smtp.received.at(-1).text, /Spine templates/);
+
+    // Unsubscribing from Phansora leaves Skylanex alone.
+    await fetch(`${o.base}/u/${link[1]}?b=${phansora.id}`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
+    const ann = (await o.call('GET', '/api/contacts')).body.contacts.find((c) => c.email === 'ann@example.com');
+    assert.equal(ann.status, 'subscribed');
+    assert.deepEqual(ann.brands, { [phansora.id]: 'unsubscribed', [skylanex.id]: 'subscribed' });
+  } finally {
+    await o.close();
+    await smtp.close();
+  }
+});
+
+test('pictures upload, are checked by their bytes, and are served publicly for mail apps', async () => {
+  const o = await startOpios();
+  try {
+    await o.call('POST', '/api/auth/setup', { username: 'me', password: 'long-enough-1' });
+    const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+    const anonymous = await fetch(`${o.base}/api/media`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: png });
+    assert.equal(anonymous.status, 401, 'needs the login');
+    assert.equal((await o.callRaw('POST', '/api/media', Buffer.alloc(0), { 'content-type': 'image/png' })).status, 400, 'an empty upload is turned away');
+    const sent = await o.callRaw('POST', '/api/media', png, { 'content-type': 'image/png', 'x-file-name': 'logo.png' });
+    assert.equal(sent.status, 201);
+    assert.match(sent.body.url, /\/media\/[A-Za-z0-9_-]+\.png$/);
+    const file = await fetch(sent.body.url.replace(/^https?:\/\/[^/]+/, o.base));
+    assert.equal(file.status, 200);
+    assert.equal(file.headers.get('content-type'), 'image/png');
+    const notPicture = await o.callRaw('POST', '/api/media', Buffer.from('<svg onload="alert(1)"></svg>'), { 'content-type': 'image/png' });
+    assert.equal(notPicture.status, 415);
+  } finally {
+    await o.close();
   }
 });

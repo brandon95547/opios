@@ -8,5 +8,7 @@ export default defineConfig({
   // Built for the path it is served under (OPIOS_BASE_PATH, such as /opios).
   base: `${BASE_PATH}/`,
   plugins: [react()],
-  build: { outDir: 'dist', emptyOutDir: true },
+  // The visual template editor loads MJML (about 430 KB gzipped) when it opens, and no other
+  // page does, so that one large chunk is expected.
+  build: { outDir: 'dist', emptyOutDir: true, chunkSizeWarningLimit: 1500 },
 });

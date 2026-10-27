@@ -32,3 +32,16 @@ export const api = {
   put: (url, body) => request('PUT', url, body),
   del: (url) => request('DELETE', url),
 };
+
+// Uploads a picture (PNG, JPEG, GIF or WebP) and returns { url, name, … }.
+export async function uploadPicture(file) {
+  const res = await fetch(apiUrl('/api/media'), {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name || 'picture') },
+    body: file,
+    credentials: 'same-origin',
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || `The upload failed (${res.status}).`);
+  return data;
+}

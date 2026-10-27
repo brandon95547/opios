@@ -1,12 +1,13 @@
 // The frame around every page once signed in: the menu, and who is signed in.
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, ScrollRestoration, useLocation } from 'react-router-dom';
-import { House, LayoutTemplate, LogOut, Mail, Menu, Settings, Users, X } from 'lucide-react';
+import { House, LayoutTemplate, LogOut, Mail, Menu, Settings, Sparkles, Users, X } from 'lucide-react';
 import { useAuth } from './auth.jsx';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: House, end: true },
   { to: '/messages', label: 'Messages', icon: Mail },
+  { to: '/updates', label: 'Updates', icon: Sparkles },
   { to: '/contacts', label: 'Contacts', icon: Users },
   { to: '/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/settings', label: 'Settings', icon: Settings },

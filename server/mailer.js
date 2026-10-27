@@ -20,22 +20,25 @@ export function createTransport(smtp, { pool = false } = {}) {
 }
 
 // One email for one contact. The style sheet is copied onto each tag (juice), because several
-// mail apps, Outlook among them, ignore style sheets.
-export function buildMessage({ smtp, general, message, contact, unsubscribe }) {
+// mail apps, Outlook among them, ignore style sheets. A brand can send under its own name and
+// address (the account has to be allowed to send as it: a Gmail "Send mail as" alias, say).
+export function buildMessage({ smtp, general, brand = null, message, contact, unsubscribe }) {
   const html = juice(renderEmail({
     templateHtml: message.templateHtml,
     bodyHtml: message.bodyHtml,
+    updatesHtml: message.updatesHtml,
     subject: message.subject,
     preheader: message.preheader,
     contact,
     general,
+    brand,
     unsubscribeUrl: unsubscribe.url,
   }), { preserveImportant: true });
   return {
-    from: { name: smtp.fromName || general.orgName || '', address: smtp.fromEmail },
+    from: { name: brand?.from_name || brand?.name || smtp.fromName || general.orgName || '', address: brand?.from_email || smtp.fromEmail },
     to: { name: '', address: contact.email },
-    replyTo: smtp.replyTo || undefined,
-    subject: renderSubject(message.subject, contact, general).replace(/[\r\n]+/g, ' '),
+    replyTo: brand?.reply_to || smtp.replyTo || undefined,
+    subject: renderSubject(message.subject, contact, general, brand).replace(/[\r\n]+/g, ' '),
     html,
     text: htmlToText(html),
     headers: unsubscribe.headers,

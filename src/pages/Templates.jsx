@@ -4,11 +4,22 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Copy, LayoutTemplate, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { SAMPLE_BODY, SAMPLE_CONTACT, renderEmail } from '../../shared/render.js';
+import { SAMPLE_UPDATES, renderUpdatesHtml } from '../../shared/updates.js';
+import { updatesOptions } from '../../shared/design.js';
 import { Dialog, Empty, ErrorNote, Loading, PageHeader, formatDate, plural, useConfirm, useLoad, useToast } from '../ui.jsx';
 import { EmailFrame } from '../components/EmailPreview.jsx';
 
-export function Thumb({ html, general, title }) {
-  const page = renderEmail({ templateHtml: html, bodyHtml: SAMPLE_BODY, subject: 'Sample', contact: SAMPLE_CONTACT, general, unsubscribeUrl: '#' });
+export function Thumb({ html, design, brand, general, title }) {
+  const page = renderEmail({
+    templateHtml: html,
+    bodyHtml: SAMPLE_BODY,
+    updatesHtml: renderUpdatesHtml(SAMPLE_UPDATES, updatesOptions(design, brand)),
+    subject: 'Sample',
+    contact: SAMPLE_CONTACT,
+    general,
+    brand,
+    unsubscribeUrl: '#',
+  });
   return (
     <div className="thumb" aria-hidden="true">
       <EmailFrame html={page} title={title} className="thumb-frame" />
@@ -16,35 +27,48 @@ export function Thumb({ html, general, title }) {
   );
 }
 
-function NewDialog({ onClose, general }) {
+function NewDialog({ onClose, general, brands }) {
   const starters = useLoad(() => api.get('/api/templates/starters'));
   const navigate = useNavigate();
   const toast = useToast();
+  const [brandId, setBrandId] = useState(brands[0]?.id || '');
+  const brand = brands.find((b) => b.id === Number(brandId)) || null;
   async function pick(key) {
     try {
-      const t = await api.post('/api/templates', { starter: key });
+      const t = await api.post('/api/templates', { starter: key, brand_id: brandId || null });
       navigate(`/templates/${t.id}`);
     } catch (err) { toast(err.message, 'error'); }
   }
   return (
     <Dialog open onClose={onClose} title="Start a new template from…" wide>
+      {brands.length > 0 && (
+        <label className="field field-narrow">
+          <span className="field-label">For brand</span>
+          <select value={brandId} onChange={(e) => setBrandId(e.target.value ? Number(e.target.value) : '')}>
+            {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            <option value="">Any brand</option>
+          </select>
+        </label>
+      )}
       {!starters.data ? <Loading /> : (
         <div className="template-grid">
           {starters.data.map((s) => (
             <button key={s.key} type="button" className="template-card template-pick" onClick={() => pick(s.key)}>
-              <Thumb html={s.html} general={general} title={`${s.name} starter`} />
-              <span className="template-name">{s.name}</span>
+              <Thumb html={s.html} brand={brand} general={general} title={`${s.name} starter`} />
+              <span className="template-name">{s.name} <span className="tag">{s.kind === 'blocks' ? 'Visual' : 'HTML'}</span></span>
             </button>
           ))}
         </div>
       )}
+      <p className="field-hint">Visual templates are built from blocks, with a live preview to click on. HTML ones are edited as code.</p>
       <p className="field-hint">To start from one of your own, use Duplicate on its card instead.</p>
     </Dialog>
   );
 }
 
 export default function Templates() {
-  const data = useLoad(() => Promise.all([api.get('/api/templates'), api.get('/api/settings')]).then(([templates, settings]) => ({ templates, general: settings.general })));
+  const data = useLoad(() => Promise.all([api.get('/api/templates'), api.get('/api/settings'), api.get('/api/brands')])
+    .then(([templates, settings, brands]) => ({ templates, general: settings.general, brands })));
   const [creating, setCreating] = useState(false);
   const [confirmElement, confirm] = useConfirm();
   const toast = useToast();
@@ -86,12 +110,12 @@ export default function Templates() {
           {data.data.templates.map((t) => (
             <article key={t.id} className="template-card">
               <Link to={`/templates/${t.id}`} className="template-open" aria-label={`Edit ${t.name}`}>
-                <Thumb html={t.html} general={data.data.general} title={`${t.name} preview`} />
+                <Thumb html={t.html} design={t.design} brand={data.data.brands.find((b) => b.id === t.brand_id)} general={data.data.general} title={`${t.name} preview`} />
               </Link>
               <div className="template-foot">
                 <div>
                   <Link to={`/templates/${t.id}`} className="template-name">{t.name}</Link>
-                  <span className="muted template-date">Edited {formatDate(t.updated_at)}</span>
+                  <span className="muted template-date">{t.kind === 'blocks' ? 'Visual' : 'HTML'} · {t.brand_name || 'Any brand'} · edited {formatDate(t.updated_at)}</span>
                 </div>
                 <div className="template-tools">
                   <Link to={`/templates/${t.id}`} className="icon-button" aria-label={`Edit ${t.name}`} title="Edit"><Pencil size={16} /></Link>
@@ -103,7 +127,7 @@ export default function Templates() {
           ))}
         </div>
       )}
-      {creating && <NewDialog onClose={() => setCreating(false)} general={data.data?.general} />}
+      {creating && data.data && <NewDialog onClose={() => setCreating(false)} general={data.data.general} brands={data.data.brands} />}
       {confirmElement}
     </>
   );

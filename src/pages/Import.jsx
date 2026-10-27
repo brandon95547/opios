@@ -61,6 +61,10 @@ export default function Import() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const lists = useLoad(() => api.get('/api/contacts').then((d) => d.lists));
+  const brands = useLoad(() => api.get('/api/brands'));
+  const [brandIds, setBrandIds] = useState(null);
+  const chosenBrands = brandIds ?? (brands.data || []).map((b) => b.id);
+  const toggleBrand = (id) => setBrandIds(chosenBrands.includes(id) ? chosenBrands.filter((x) => x !== id) : [...chosenBrands, id]);
   const [file, setFile] = useState(null);
   const [columns, setColumns] = useState(null);
   const [target, setTarget] = useState(params.get('list') || '');
@@ -104,7 +108,7 @@ export default function Import() {
     setBusy(true);
     setError(null);
     try {
-      const body = { rows: mapped, update_existing: updateNames };
+      const body = { rows: mapped, update_existing: updateNames, brand_ids: chosenBrands };
       if (target === 'new') body.new_list = newList;
       else if (target) body.list_id = Number(target);
       setResult(await api.post('/api/contacts/import', body));
@@ -199,6 +203,20 @@ export default function Import() {
 
           <section className="card stack">
             <h2 className="card-title">Where they go</h2>
+            {brands.data?.length > 0 && (
+              <fieldset className="field">
+                <legend className="field-label">Subscribe them to</legend>
+                <div className="chips">
+                  {brands.data.map((b) => (
+                    <label key={b.id} className={chosenBrands.includes(b.id) ? 'chip chip-on' : 'chip'}>
+                      <input type="checkbox" checked={chosenBrands.includes(b.id)} onChange={() => toggleBrand(b.id)} />
+                      {b.name}
+                    </label>
+                  ))}
+                </div>
+                <span className="field-hint">Someone who unsubscribed from a brand stays unsubscribed from it.</span>
+              </fieldset>
+            )}
             <label className="field">
               <span className="field-label">Add them to a list</span>
               <select value={target} onChange={(e) => setTarget(e.target.value)}>
@@ -220,7 +238,7 @@ export default function Import() {
             <p className="field-hint">People who unsubscribed stay unsubscribed, even if they’re in this file. Only import people who agreed to get your emails.</p>
             <ErrorNote error={error} />
             <div>
-              <button type="button" className="button button-primary" onClick={submit} disabled={busy || columns.email < 0 || !summary.valid || (target === 'new' && !newList.trim())}>
+              <button type="button" className="button button-primary" onClick={submit} disabled={busy || columns.email < 0 || !summary.valid || (target === 'new' && !newList.trim()) || (brands.data?.length > 0 && !chosenBrands.length)}>
                 <Upload size={17} aria-hidden="true" />{busy ? 'Importing…' : `Import ${plural(summary.valid, 'contact')}`}
               </button>
             </div>

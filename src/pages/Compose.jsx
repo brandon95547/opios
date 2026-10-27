@@ -1,17 +1,23 @@
-// Writing a message: subject, template, the message itself and who it goes to, with a live
-// preview. Changes are saved as you go.
+// Writing a message: its brand, subject, template, the message itself, its product updates and
+// who it goes to, with a live preview. Changes are saved as you go.
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, MailCheck, Send } from 'lucide-react';
 import { api } from '../api.js';
-import { SAMPLE_CONTACT, renderEmail, renderSubject } from '../../shared/render.js';
+import { SAMPLE_CONTACT, renderEmail, renderSubject, templateHasUpdates } from '../../shared/render.js';
+import { renderUpdatesHtml, selectUpdates } from '../../shared/updates.js';
+import { updatesOptions } from '../../shared/design.js';
 import { isEmail } from '../../shared/email.js';
 import { Dialog, ErrorNote, Loading, PageHeader, insertAtCursor, number, plural, useLoad, useToast } from '../ui.jsx';
 import Editor from '../components/Editor.jsx';
 import EmailPreview from '../components/EmailPreview.jsx';
 import Recipients, { audienceSize } from '../components/Recipients.jsx';
+import UpdatesPicker from '../components/UpdatesPicker.jsx';
 
 const SAVE_LABELS = { saved: 'Saved', unsaved: 'Not saved yet', saving: 'Saving…', error: 'Couldn’t save' };
+
+// The templates a brand's message can use: its own, and those made for any brand.
+const templatesFor = (templates, brandId) => templates.filter((t) => !t.brand_id || t.brand_id === brandId);
 
 function TestDialog({ open, onClose, defaultTo, draft }) {
   const toast = useToast();
@@ -51,13 +57,15 @@ function TestDialog({ open, onClose, defaultTo, draft }) {
   );
 }
 
-function SendDialog({ open, onClose, onSend, count, subject, settings }) {
+function SendDialog({ open, onClose, onSend, count, subject, settings, brand }) {
   const [busy, setBusy] = useState(false);
   const rate = settings.general.ratePerMinute || 20;
   const minutes = Math.ceil(count / rate);
+  const fromName = brand?.from_name || brand?.name || settings.smtp.fromName;
+  const fromEmail = brand?.from_email || settings.smtp.fromEmail;
   return (
     <Dialog open={open} onClose={onClose} title="Send this message?">
-      <p className="dialog-text">“{subject}” goes to <strong>{plural(count, 'person', 'people')}</strong>, from {settings.smtp.fromName ? `${settings.smtp.fromName} <${settings.smtp.fromEmail}>` : settings.smtp.fromEmail}.</p>
+      <p className="dialog-text">“{subject}” goes to <strong>{plural(count, 'person', 'people')}</strong>{brand ? ` subscribed to ${brand.name}` : ''}, from {fromName ? `${fromName} <${fromEmail}>` : fromEmail}.</p>
       <p className="dialog-text muted">
         At {number(rate)} emails a minute, this takes {minutes <= 1 ? 'about a minute' : `about ${number(minutes)} minutes`}. You can leave this page while it sends.
       </p>
@@ -82,14 +90,18 @@ export default function Compose({ message, onSent }) {
     template_id: message.template_id,
     body_html: message.body_html,
     audience: message.audience,
+    brand_id: message.brand_id,
+    updates_mode: message.updates_mode || 'auto',
+    update_ids: message.update_ids || [],
   }));
   const [saveState, setSaveState] = useState('saved');
   const [size, setSize] = useState('desktop');
   const [view, setView] = useState('write');
   const [dialog, setDialog] = useState(null);
   const subjectRef = useRef(null);
-  const data = useLoad(() => Promise.all([api.get('/api/templates'), api.get('/api/contacts'), api.get('/api/settings')])
-    .then(([templates, c, settings]) => ({ templates, contacts: c.contacts, lists: c.lists, settings })));
+  const data = useLoad(() => Promise.all([api.get('/api/templates'), api.get('/api/contacts'), api.get('/api/settings'), api.get('/api/brands')])
+    .then(([templates, c, settings, brands]) => ({ templates, contacts: c.contacts, lists: c.lists, settings, brands })));
+  const candidates = useLoad(() => (draft.brand_id ? api.get(`/api/updates?brand_id=${draft.brand_id}`) : Promise.resolve([])), [draft.brand_id]);
 
   // Saving: a short pause after the last change, one save at a time, and whatever is left when
   // the page closes.
@@ -125,19 +137,34 @@ export default function Compose({ message, onSent }) {
   const d = data.data;
   const template = d?.templates.find((t) => t.id === draft.template_id);
   const general = d?.settings.general;
+  const brand = d?.brands.find((b) => b.id === draft.brand_id) || null;
+  const hasUpdates = Boolean(brand && templateHasUpdates(template?.html));
+  const updateOptions = useMemo(() => updatesOptions(template?.design, brand), [template, brand]);
+  const updatesHtml = useMemo(() => (hasUpdates && candidates.data
+    ? renderUpdatesHtml(selectUpdates(candidates.data, { mode: draft.updates_mode, ids: draft.update_ids, limit: updateOptions.limit }), { ...updateOptions, timeZone: general?.timeZone })
+    : ''), [hasUpdates, candidates.data, draft.updates_mode, draft.update_ids, updateOptions, general]);
   const body = useDeferredValue(draft.body_html);
   const html = useMemo(() => (d ? renderEmail({
     templateHtml: template?.html,
     bodyHtml: body,
+    updatesHtml,
     subject: draft.subject,
     preheader: draft.preheader,
     contact: SAMPLE_CONTACT,
     general,
+    brand,
     unsubscribeUrl: '#',
-  }) : ''), [d, template, general, body, draft.subject, draft.preheader]);
+  }) : ''), [d, template, general, brand, body, updatesHtml, draft.subject, draft.preheader]);
 
   if (data.error) return <ErrorNote error={data.error} onRetry={data.reload} />;
   if (!d) return <Loading />;
+
+  // A new brand keeps the template if it suits any brand; else the brand's own template comes in.
+  function chooseBrand(brandId) {
+    const fits = template && (!template.brand_id || template.brand_id === brandId);
+    const next = fits ? template : templatesFor(d.templates, brandId).find((t) => t.brand_id === brandId) || templatesFor(d.templates, brandId)[0];
+    update({ brand_id: brandId, template_id: next?.id ?? null, updates_mode: 'auto', update_ids: [] });
+  }
   const accountReady = d.settings.smtp.fromEmail && d.settings.smtp.host && (!d.settings.smtp.user || d.settings.smtp.hasPassword);
 
   async function openSend() {
@@ -148,9 +175,10 @@ export default function Compose({ message, onSent }) {
     }
     if (!draft.subject.trim()) return toast('Give the message a subject first.', 'error');
     if (!template) return toast('Choose a template first.', 'error');
-    if (!audienceSize(draft.audience, d.contacts)) return toast('Choose who to send it to first.', 'error');
+    if (d.brands.length && !brand) return toast('Choose the brand this message is from first.', 'error');
+    if (!audienceSize(draft.audience, d.contacts, draft.brand_id)) return toast('Choose who to send it to first.', 'error');
     try {
-      const { count } = await api.post('/api/campaigns/audience', { audience: draft.audience });
+      const { count } = await api.post('/api/campaigns/audience', { audience: draft.audience, brand_id: draft.brand_id });
       setDialog({ kind: 'send', count });
     } catch (err) {
       toast(err.message, 'error');
@@ -185,6 +213,16 @@ export default function Compose({ message, onSent }) {
       <div className="compose">
         <div className={view === 'write' ? 'compose-write' : 'compose-write hide-narrow'}>
           <section className="card stack">
+            {d.brands.length > 0 && (
+              <label className="field">
+                <span className="field-label">From brand</span>
+                <select value={draft.brand_id ?? ''} onChange={(e) => chooseBrand(Number(e.target.value) || null)}>
+                  {!brand && <option value="">Choose a brand</option>}
+                  {d.brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+                <span className="field-hint">It goes to {brand ? `${brand.name}’s` : 'the brand’s'} subscribers, with its heading{brand ? ` (“${brand.heading}”)` : ''} and its updates.</span>
+              </label>
+            )}
             <div className="field">
               <label className="field-label" htmlFor="subject">Subject</label>
               <div className="input-with">
@@ -209,7 +247,7 @@ export default function Compose({ message, onSent }) {
               <span className="field-label">Template</span>
               <select value={draft.template_id ?? ''} onChange={(e) => update({ template_id: Number(e.target.value) || null })}>
                 {!template && <option value="">Choose a template</option>}
-                {d.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                {templatesFor(d.templates, draft.brand_id).map((t) => <option key={t.id} value={t.id}>{t.name}{t.kind === 'blocks' ? '' : ' (HTML)'}</option>)}
               </select>
               <span className="field-hint"><Link to="/templates" className="link">Make or change templates</Link></span>
             </label>
@@ -217,9 +255,20 @@ export default function Compose({ message, onSent }) {
           <section className="card card-editor">
             <Editor value={message.body_html} onChange={(body_html) => update({ body_html })} />
           </section>
+          {hasUpdates && (
+            <section className="card">
+              <h2 className="card-title">Product updates</h2>
+              {!candidates.data ? <Loading /> : (
+                <UpdatesPicker brand={brand} candidates={candidates.data} mode={draft.updates_mode} ids={draft.update_ids} limit={updateOptions.limit} onChange={update} />
+              )}
+            </section>
+          )}
+          {brand && template && !templateHasUpdates(template.html) && (
+            <p className="note note-warn">This template has no place for product updates. Add an Updates block to it (or {'{{updates}}'} to an HTML template) to include them.</p>
+          )}
           <section className="card">
             <h2 className="card-title">Recipients</h2>
-            <Recipients audience={draft.audience} onChange={(audience) => update({ audience })} contacts={d.contacts} lists={d.lists} />
+            <Recipients audience={draft.audience} onChange={(audience) => update({ audience })} contacts={d.contacts} lists={d.lists} brand={brand} />
           </section>
         </div>
         <div className={view === 'preview' ? 'compose-preview' : 'compose-preview hide-narrow'}>
@@ -228,13 +277,13 @@ export default function Compose({ message, onSent }) {
             size={size}
             onSize={setSize}
             note={`As ${SAMPLE_CONTACT.first_name} ${SAMPLE_CONTACT.last_name} would see it`}
-            subject={renderSubject(draft.subject, SAMPLE_CONTACT, general)}
+            subject={renderSubject(draft.subject, SAMPLE_CONTACT, general, brand)}
           />
         </div>
       </div>
       {dialog?.kind === 'test' && <TestDialog open onClose={() => setDialog(null)} defaultTo={d.settings.smtp.fromEmail} draft={draft} />}
       {dialog?.kind === 'send' && (
-        <SendDialog open onClose={() => setDialog(null)} onSend={send} count={dialog.count} subject={draft.subject} settings={d.settings} />
+        <SendDialog open onClose={() => setDialog(null)} onSend={send} count={dialog.count} subject={draft.subject} settings={d.settings} brand={brand} />
       )}
     </>
   );

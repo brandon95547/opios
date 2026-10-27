@@ -83,6 +83,90 @@ CREATE TABLE campaign_recipients (
 CREATE INDEX campaign_recipients_by_status ON campaign_recipients(campaign_id, status);
 `;
 
+// Brands (Phansora, Skylanex…), their products, and the product updates newsletters report.
+// A contact is subscribed to each brand separately; contacts.status stays the switch for all of
+// them ("unsubscribed from everything"). Templates gain a visual kind, built from blocks (design)
+// and compiled to HTML when saved.
+const BRANDS = `
+CREATE TABLE brands (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  heading TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '#2f6fed',
+  logo_url TEXT NOT NULL DEFAULT '',
+  website TEXT NOT NULL DEFAULT '',
+  from_name TEXT NOT NULL DEFAULT '',
+  from_email TEXT NOT NULL DEFAULT '',
+  reply_to TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE products (
+  id INTEGER PRIMARY KEY,
+  brand_id INTEGER NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  name TEXT NOT NULL COLLATE NOCASE,
+  url TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  UNIQUE (brand_id, name)
+);
+-- What changed in a product: new, improved or fixed. happened_at is the date shown in emails.
+CREATE TABLE updates (
+  id INTEGER PRIMARY KEY,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '',
+  image_url TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'new' CHECK (kind IN ('new', 'improved', 'fixed')),
+  status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published')),
+  source TEXT NOT NULL DEFAULT 'manual',
+  happened_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX updates_by_product ON updates(product_id, happened_at);
+CREATE TABLE subscriptions (
+  contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  brand_id INTEGER NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('subscribed', 'unsubscribed')),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (contact_id, brand_id)
+);
+CREATE INDEX subscriptions_by_brand ON subscriptions(brand_id, status);
+ALTER TABLE templates ADD COLUMN kind TEXT NOT NULL DEFAULT 'html';
+ALTER TABLE templates ADD COLUMN design TEXT;
+ALTER TABLE templates ADD COLUMN brand_id INTEGER REFERENCES brands(id) ON DELETE SET NULL;
+ALTER TABLE campaigns ADD COLUMN brand_id INTEGER REFERENCES brands(id) ON DELETE SET NULL;
+ALTER TABLE campaigns ADD COLUMN updates_mode TEXT NOT NULL DEFAULT 'auto';
+ALTER TABLE campaigns ADD COLUMN update_ids TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE campaigns ADD COLUMN updates_html TEXT;
+-- The updates a sent message carried, in order, so later messages don't repeat them.
+CREATE TABLE campaign_updates (
+  campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  update_id INTEGER NOT NULL REFERENCES updates(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (campaign_id, update_id)
+);
+-- Keys for adding updates from scripts (POST /api/v1/updates). Only a hash is kept.
+CREATE TABLE api_keys (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  prefix TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+-- Pictures uploaded for emails, kept in data/media and served publicly, as mail apps need.
+CREATE TABLE media (
+  id INTEGER PRIMARY KEY,
+  file TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  created_at TEXT NOT NULL
+);
+`;
+
 // Each entry upgrades the database by one version. Add to the end; never edit one that has shipped.
 const MIGRATIONS = [
   (db) => {
@@ -91,6 +175,7 @@ const MIGRATIONS = [
     const at = now();
     for (const t of STARTER_TEMPLATES) add.run(t.name, t.html, at, at);
   },
+  (db) => db.exec(BRANDS),
 ];
 
 function migrate(db) {

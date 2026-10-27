@@ -4,20 +4,24 @@ import { Link, useBlocker, useParams } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
 import { api } from '../api.js';
 import { SAMPLE_BODY, SAMPLE_CONTACT, TEMPLATE_TAGS, renderEmail } from '../../shared/render.js';
+import { SAMPLE_UPDATES, renderUpdatesHtml } from '../../shared/updates.js';
+import { updatesOptions } from '../../shared/design.js';
 import { Dialog, ErrorNote, Loading, PageHeader, insertAtCursor, useLoad, useToast } from '../ui.jsx';
 import EmailPreview from '../components/EmailPreview.jsx';
+import BlockEditor from './BlockEditor.jsx';
 
 const has = (html, tag) => new RegExp(`\\{\\{\\s*${tag}\\s*(\\|[^}]*)?\\}\\}`).test(html);
 
-function Form({ template, general }) {
+function Form({ template, general, brands }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: template.name, html: template.html });
-  const [saved, setSaved] = useState({ name: template.name, html: template.html });
+  const [form, setForm] = useState({ name: template.name, html: template.html, brand_id: template.brand_id || '' });
+  const [saved, setSaved] = useState({ name: template.name, html: template.html, brand_id: template.brand_id || '' });
   const [busy, setBusy] = useState(false);
   const [size, setSize] = useState('desktop');
   const [view, setView] = useState('code');
   const code = useRef(null);
-  const dirty = form.name !== saved.name || form.html !== saved.html;
+  const dirty = form.name !== saved.name || form.html !== saved.html || form.brand_id !== saved.brand_id;
+  const brand = brands.find((b) => b.id === Number(form.brand_id)) || null;
   const missingContent = !has(form.html, 'content');
 
   const blocker = useBlocker(({ currentLocation, nextLocation }) => dirty && currentLocation.pathname !== nextLocation.pathname);
@@ -28,15 +32,23 @@ function Form({ template, general }) {
   }, [dirty]);
 
   const preview = useMemo(() => renderEmail({
-    templateHtml: form.html, bodyHtml: SAMPLE_BODY, subject: 'Sample subject', preheader: 'Sample preview text', contact: SAMPLE_CONTACT, general, unsubscribeUrl: '#',
-  }), [form.html, general]);
+    templateHtml: form.html,
+    bodyHtml: SAMPLE_BODY,
+    updatesHtml: renderUpdatesHtml(SAMPLE_UPDATES, { ...updatesOptions(null, brand), timeZone: general.timeZone }),
+    subject: 'Sample subject',
+    preheader: 'Sample preview text',
+    contact: SAMPLE_CONTACT,
+    general,
+    brand,
+    unsubscribeUrl: '#',
+  }), [form.html, general, brand]);
 
   async function save() {
     if (busy || missingContent) return;
     setBusy(true);
     try {
-      const t = await api.put(`/api/templates/${template.id}`, form);
-      setSaved({ name: t.name, html: t.html });
+      const t = await api.put(`/api/templates/${template.id}`, { ...form, brand_id: form.brand_id || null });
+      setSaved({ name: t.name, html: t.html, brand_id: t.brand_id || '' });
       toast('Template saved.');
     } catch (err) {
       toast(err.message, 'error');
@@ -69,10 +81,19 @@ function Form({ template, general }) {
       <div className="compose">
         <div className={view === 'code' ? 'compose-write' : 'compose-write hide-narrow'}>
           <section className="card stack">
-            <label className="field">
-              <span className="field-label">Name</span>
-              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={100} />
-            </label>
+            <div className="field-row">
+              <label className="field">
+                <span className="field-label">Name</span>
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={100} />
+              </label>
+              <label className="field">
+                <span className="field-label">Brand</span>
+                <select value={form.brand_id} onChange={(e) => setForm({ ...form, brand_id: e.target.value ? Number(e.target.value) : '' })}>
+                  <option value="">Any brand</option>
+                  {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </label>
+            </div>
             <div className="field">
               <div className="code-head">
                 <label className="field-label" htmlFor="template-html">HTML</label>
@@ -119,9 +140,11 @@ function Form({ template, general }) {
 
 export default function TemplateEditor() {
   const { id } = useParams();
-  const data = useLoad(() => Promise.all([api.get(`/api/templates/${id}`), api.get('/api/settings')]), [id]);
+  const data = useLoad(() => Promise.all([api.get(`/api/templates/${id}`), api.get('/api/settings'), api.get('/api/brands')]), [id]);
   if (data.error) return <ErrorNote error={data.error} onRetry={data.reload} />;
   if (!data.data) return <Loading />;
-  const [template, settings] = data.data;
-  return <Form key={template.id} template={template} general={settings.general} />;
+  const [template, settings, brands] = data.data;
+  return template.kind === 'blocks'
+    ? <BlockEditor key={template.id} template={template} brands={brands} general={settings.general} />
+    : <Form key={template.id} template={template} general={settings.general} brands={brands} />;
 }

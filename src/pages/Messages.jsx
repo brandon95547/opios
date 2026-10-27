@@ -89,7 +89,7 @@ export default function Messages() {
                 <tr key={m.id}>
                   <td>
                     <Link to={`/messages/${m.id}`} className="table-title">{m.subject || 'Untitled draft'}</Link>
-                    <span className="muted table-sub">{m.template_name || 'No template'}</span>
+                    <span className="muted table-sub">{[m.brand_name, m.template_name || 'No template'].filter(Boolean).join(' · ')}</span>
                   </td>
                   <td><Badge status={m.status} /></td>
                   <td className="hide-small">{progressText(m)}</td>

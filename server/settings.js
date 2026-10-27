@@ -9,7 +9,16 @@ const DEFAULT_SMTP = {
   provider: 'gmail', host: PROVIDERS.gmail.host, port: PROVIDERS.gmail.port, security: PROVIDERS.gmail.security,
   user: '', passSealed: '', fromName: '', fromEmail: '', replyTo: '',
 };
-const DEFAULT_GENERAL = { orgName: '', address: '', publicUrl: '', ratePerMinute: 20 };
+const DEFAULT_GENERAL = { orgName: '', address: '', publicUrl: '', ratePerMinute: 20, timeZone: '' };
+
+const validTimeZone = (zone) => {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const oneLine = (value, max) => text(value, max).replace(/[\r\n]+/g, ' ');
 
@@ -87,11 +96,14 @@ export function createSettings(db, key) {
     }
     const rate = Number(input?.ratePerMinute);
     if (!Number.isInteger(rate) || rate < 1 || rate > 600) fail(400, 'Sending speed is a whole number from 1 to 600 emails a minute.');
+    const timeZone = text(input?.timeZone, 60);
+    if (timeZone && !validTimeZone(timeZone)) fail(400, 'That time zone isn’t one Opios knows, such as America/New_York.');
     const value = {
       orgName: oneLine(input?.orgName, 100),
       address: text(input?.address, 500),
       publicUrl: publicUrl.replace(/\/+$/, ''),
       ratePerMinute: rate,
+      timeZone,
     };
     write('general', value);
     return value;
@@ -103,14 +115,15 @@ export function createSettings(db, key) {
 }
 
 // Where a contact's unsubscribe link points, and the List-Unsubscribe headers that put an
-// Unsubscribe button in Gmail, Apple Mail and others. Until the app is at a public web address,
-// the link opens an email to the sender instead, and the unsubscribe is done by hand.
-export function unsubscribeFor(general, smtp, token) {
+// Unsubscribe button in Gmail, Apple Mail and others. A brand's newsletter unsubscribes from that
+// brand only. Until the app is at a public web address, the link opens an email to the sender
+// instead, and the unsubscribe is done by hand.
+export function unsubscribeFor(general, smtp, token, brand = null) {
   const base = publicBase(general.publicUrl);
-  const to = smtp.replyTo || smtp.fromEmail;
+  const to = brand?.reply_to || smtp.replyTo || brand?.from_email || smtp.fromEmail;
   const mailto = `mailto:${to}?subject=${encodeURIComponent('Unsubscribe')}&body=${encodeURIComponent('Please take me off this list.')}`;
   if (!base) return { url: mailto, headers: { 'List-Unsubscribe': `<${mailto}>` } };
-  const url = `${base}/u/${token}`;
+  const url = `${base}/u/${token}${brand ? `?b=${brand.id}` : ''}`;
   const headers = { 'List-Unsubscribe': `<${url}>, <${mailto}>` };
   if (base.startsWith('https://')) headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
   return { url, headers };

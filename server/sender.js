@@ -8,9 +8,11 @@ export function createSender({ db, settings, log = console }) {
   const q = {
     nextCampaign: db.prepare("SELECT * FROM campaigns WHERE status = 'sending' ORDER BY started_at, id LIMIT 1"),
     nextRecipient: db.prepare(`
-      SELECT r.id, COALESCE(c.email, r.email) AS email, c.first_name, c.last_name, c.status AS contact_status, c.token
+      SELECT r.id, COALESCE(c.email, r.email) AS email, c.first_name, c.last_name, c.status AS contact_status, c.token,
+        (SELECT s.status FROM subscriptions s WHERE s.contact_id = c.id AND s.brand_id = ?) AS brand_status
       FROM campaign_recipients r LEFT JOIN contacts c ON c.id = r.contact_id
       WHERE r.campaign_id = ? AND r.status = 'pending' ORDER BY r.id LIMIT 1`),
+    brand: db.prepare('SELECT * FROM brands WHERE id = ?'),
     mark: db.prepare('UPDATE campaign_recipients SET status = ?, error = ?, sent_at = ? WHERE id = ?'),
     finish: db.prepare("UPDATE campaigns SET status = 'sent', finished_at = ?, updated_at = ? WHERE id = ? AND status = 'sending'"),
     pause: db.prepare("UPDATE campaigns SET status = 'paused', pause_reason = ?, updated_at = ? WHERE id = ? AND status = 'sending'"),
@@ -51,7 +53,7 @@ export function createSender({ db, settings, log = console }) {
   async function sendNext() {
     const campaign = q.nextCampaign.get();
     if (!campaign) return false;
-    const r = q.nextRecipient.get(campaign.id);
+    const r = q.nextRecipient.get(campaign.brand_id, campaign.id);
     if (!r) {
       q.finish.run(now(), now(), campaign.id);
       return true;
@@ -60,10 +62,11 @@ export function createSender({ db, settings, log = console }) {
       q.mark.run('skipped', 'The contact was deleted before this was sent.', null, r.id);
       return true;
     }
-    if (r.contact_status !== 'subscribed') {
+    if (r.contact_status !== 'subscribed' || (campaign.brand_id && r.brand_status !== 'subscribed')) {
       q.mark.run('skipped', 'Unsubscribed before this was sent.', null, r.id);
       return true;
     }
+    const brand = campaign.brand_id ? q.brand.get(campaign.brand_id) || null : null;
     const smtp = settings.smtp();
     if (!settings.smtpReady(smtp)) {
       q.pause.run('The email account in Settings isn’t set up.', now(), campaign.id);
@@ -75,9 +78,10 @@ export function createSender({ db, settings, log = console }) {
       await connection(smtp).sendMail(buildMessage({
         smtp,
         general,
-        message: { subject: campaign.subject, preheader: campaign.preheader, bodyHtml: campaign.body_html, templateHtml: campaign.template_html },
+        brand,
+        message: { subject: campaign.subject, preheader: campaign.preheader, bodyHtml: campaign.body_html, templateHtml: campaign.template_html, updatesHtml: campaign.updates_html },
         contact: { email: r.email, first_name: r.first_name, last_name: r.last_name },
-        unsubscribe: unsubscribeFor(general, smtp, r.token),
+        unsubscribe: unsubscribeFor(general, smtp, r.token, brand),
       }));
       q.mark.run('sent', null, now(), r.id);
     } catch (err) {

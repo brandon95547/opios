@@ -2,16 +2,31 @@
 
 A simple newsletter system. Keep your contacts, design a template, write a message, and send it through your own Gmail or any SMTP account.
 
-- **Contacts**: import a CSV file (or rows pasted from a spreadsheet), or add people one by one. File them in lists, search, export, and unsubscribe or delete several at once. An import never resubscribes someone who unsubscribed.
-- **Your data**: download every contact as a CSV, or the whole database as one file, from Settings.
-- **Templates**: three starters (Classic, Minimal, Announcement), edited as HTML beside a live preview. A message goes where the template says `{{content}}`.
-- **Messages**: a formatted editor with headings, lists, links and pictures. Choose the recipients: everyone, some lists, or people you pick. Drafts save as you type. Send yourself a test, then send.
+- **Brands**: one per newsletter, such as Phansora and Skylanex. Each has its own heading ("Phansora Updates"), color, logo, From name, products and subscribers. Someone who unsubscribes from one brand keeps getting the other.
+- **Updates**: what's new, improved or fixed in each product, with its date. A brand's newsletter carries the newest updates it hasn't sent yet, or the ones you choose, in the order you choose. Scripts can add updates too, with an API key (see below).
+- **Contacts**: import a CSV file (or rows pasted from a spreadsheet), or add people one by one. File them in lists, choose the brands they're subscribed to, search, export, and change several at once. An import never resubscribes someone who unsubscribed.
+- **Templates**: visual ones, built from blocks: header, text, picture, button, two columns, divider, the message, the updates and the footer. You see the real email beside the editor, click a block to change it, and set the colors and font. Visual templates are compiled to email HTML with [MJML](https://mjml.io), so Outlook and Gmail show them right. HTML templates, written by hand, work too. A message goes where the template says `{{content}}`, and the updates where it says `{{updates}}`.
+- **Messages**: a formatting editor with headings, lists, links and pictures (uploaded or by web address). Choose the brand and the recipients: everyone subscribed to the brand, some lists, or people you pick. Drafts save as you type. Send yourself a test, then send.
 - **Sending**: in the background, one email at a time, at the speed you set. Each email is personalized, has a plain-text version and an unsubscribe link, and carries the List-Unsubscribe headers that put an Unsubscribe button in Gmail and Apple Mail.
   - The report shows who got it and what failed.
   - A wrong password or a full daily quota pauses sending, with the reason. Fix it, then resume.
   - Failed emails can be sent again.
-- **Personal touches**: `{{first_name}}`, `{{last_name}}`, `{{email}}` and the rest, in the subject, the message or the template. A fallback covers empty names: `{{first_name|there}}`.
+- **Personal touches**: `{{first_name}}`, `{{last_name}}`, `{{email}}`, `{{brand_heading}}` and the rest, in the subject, the message or the template. A fallback covers empty names: `{{first_name|there}}`.
+- **Your data**: download every contact as a CSV, or the whole database as one file, from Settings.
 - **One login**: created on the first visit. Your email password is stored encrypted.
+
+## Adding updates from scripts
+
+Create a key in **Settings › Adding updates from elsewhere**, then post updates to it. Brands are named. A product that doesn't exist yet is added to the brand. `kind` is `new`, `improved` or `fixed`. Add `"status": "draft"` to keep an update out of newsletters for now.
+
+```bash
+curl -X POST https://www.example.com/opios/api/v1/updates \
+  -H "Authorization: Bearer opk_…" \
+  -H "Content-Type: application/json" \
+  -d '{"brand": "Phansora", "product": "Talari", "title": "Spine templates", "body": "Five layouts for every frame.", "link": "https://phansora.com/talari", "kind": "new"}'
+```
+
+`GET /api/v1/updates?brand=Phansora&limit=20` lists the published ones.
 
 ## Running it
 
@@ -80,7 +95,7 @@ Settings go in a `.env` file. See `.env.example` for:
 **Keep copies of your data.** Contacts and messages are kept only in the data folder where Opios runs, never in this repository. **Settings › Your data** downloads them:
 
 - **Export contacts**: a CSV of every contact. Import CSV takes it back.
-- **Download database**: the whole database as one SQLite file. Sign-in sessions are left out, and the saved email password stays encrypted.
+- **Download database**: the whole database as one SQLite file. Sign-in sessions are left out, and the saved email password stays encrypted. Uploaded pictures are files in `data/media`, beside it.
 
 To restore a downloaded database, stop Opios and put the file in the data folder as `opios.sqlite3`, replacing the one there. Then start Opios and enter the email password again in Settings.
 

@@ -26,7 +26,7 @@ export default function Report({ message: m, reload }) {
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState(PAGE);
   const [size, setSize] = useState('desktop');
-  const settings = useLoad(() => api.get('/api/settings'));
+  const settings = useLoad(() => Promise.all([api.get('/api/settings'), api.get('/api/brands')]).then(([s, brands]) => ({ ...s, brands })));
 
   // While it sends, the report keeps up.
   useEffect(() => {
@@ -49,15 +49,18 @@ export default function Report({ message: m, reload }) {
   }, [m.recipients, filter, query]);
 
   const general = settings.data?.general;
+  const brand = settings.data?.brands.find((b) => b.id === m.brand_id) || null;
   const html = useMemo(() => renderEmail({
     templateHtml: m.template_html,
     bodyHtml: m.body_html,
+    updatesHtml: m.updates_html,
     subject: m.subject,
     preheader: m.preheader,
     contact: SAMPLE_CONTACT,
     general,
+    brand,
     unsubscribeUrl: '#',
-  }), [m, general]);
+  }), [m, general, brand]);
 
   async function act(path, success) {
     try {
@@ -175,7 +178,7 @@ export default function Report({ message: m, reload }) {
           )}
         </section>
       ) : !settings.data ? <Loading /> : (
-        <EmailPreview html={html} size={size} onSize={setSize} note="The message as sent, shown with a sample name" subject={renderSubject(m.subject, SAMPLE_CONTACT, general)} />
+        <EmailPreview html={html} size={size} onSize={setSize} note="The message as sent, shown with a sample name" subject={renderSubject(m.subject, SAMPLE_CONTACT, general, brand)} />
       )}
       {confirmElement}
     </>

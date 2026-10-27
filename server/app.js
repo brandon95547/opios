@@ -6,7 +6,9 @@ import { createAuth } from './auth.js';
 import { createSettings } from './settings.js';
 import { createSender } from './sender.js';
 import { contactsRouter } from './contacts.js';
-import { templatesRouter } from './templates.js';
+import { templatesRouter, recompileBrandTemplates } from './templates.js';
+import { brandsRouter, apiRouter } from './brands.js';
+import { mediaFiles, mediaRouter } from './media.js';
 import { campaignsRouter } from './campaigns.js';
 import { settingsRouter, overviewRouter, exportRouter } from './routes.js';
 import { unsubscribeRouter } from './unsubscribe.js';
@@ -52,8 +54,11 @@ export function createApp({ dataDir, production = false, basePath = '', setupCod
   // Everything is served under basePath (such as /opios), so Opios can share a domain.
   const site = express.Router();
   site.use('/u', unsubscribeRouter({ db, settings }));
+  site.use('/media', mediaFiles(dataDir));
 
   const api = express.Router();
+  // Scripts adding updates, with an API key instead of the login.
+  api.use('/v1', apiRouter({ db }));
   api.use(express.json({ limit: '20mb' }));
   api.use(sameOrigin);
   api.use('/auth', auth.router);
@@ -62,6 +67,8 @@ export function createApp({ dataDir, production = false, basePath = '', setupCod
   api.use(contactsRouter({ db }));
   api.use(templatesRouter({ db }));
   api.use(campaignsRouter({ db, settings, sender }));
+  api.use(brandsRouter({ db, onBrandChanged: (id) => recompileBrandTemplates(db, id).catch((err) => log.error('Recompiling templates:', err)) }));
+  api.use(mediaRouter({ db, dataDir, basePath, settings }));
   api.use(settingsRouter({ settings }));
   api.use(exportRouter({ db }));
   api.use((req, res) => res.status(404).json({ error: 'Not found.' }));

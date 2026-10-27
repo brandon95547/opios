@@ -34,6 +34,7 @@ const router = createBrowserRouter([
       { index: true, element: <Overview /> },
       { path: 'messages', element: <Messages /> },
       { path: 'messages/:id', lazy: lazyPage(() => import('./pages/Message.jsx')) },
+      { path: 'updates', lazy: lazyPage(() => import('./pages/Updates.jsx')) },
       { path: 'contacts', element: <Contacts /> },
       { path: 'contacts/import', lazy: lazyPage(() => import('./pages/Import.jsx')) },
       { path: 'templates', element: <Templates /> },

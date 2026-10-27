@@ -36,41 +36,64 @@ export function unsubscribeRouter({ db, settings }) {
     ? db.prepare('SELECT id, email, status FROM contacts WHERE token = ?').get(token)
     : null);
   const from = () => settings.general().orgName || settings.smtp().fromName || 'this newsletter';
+  // ?b=<brand> on a brand's emails: that brand's subscription is the one changed.
+  const brandOf = (req) => (Number(req.query.b) ? db.prepare('SELECT id, name, heading FROM brands WHERE id = ?').get(Number(req.query.b)) || null : null);
+  const brandStatus = (contact, brand) => db.prepare('SELECT status FROM subscriptions WHERE contact_id = ? AND brand_id = ?').get(contact.id, brand.id)?.status;
+  const setBrand = (contact, brand, status) => db.prepare(`INSERT INTO subscriptions (contact_id, brand_id, status, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT (contact_id, brand_id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`).run(contact.id, brand.id, status, now());
+  const stopAll = (contact) => db.prepare("UPDATE contacts SET status = 'unsubscribed', unsubscribed_at = COALESCE(unsubscribed_at, ?), updated_at = ? WHERE id = ?").run(now(), now(), contact.id);
+  const allowAll = (contact) => db.prepare("UPDATE contacts SET status = 'subscribed', unsubscribed_at = NULL, updated_at = ? WHERE id = ?").run(now(), contact.id);
+  const nameOf = (brand) => brand?.heading || brand?.name || from();
+  const here = (token, brand, path = '') => `${esc(token)}${path}${brand ? `?b=${brand.id}` : ''}`;
 
   const unknown = (res, token) => res.status(token === 'test' ? 200 : 404).send(token === 'test'
     ? page('Unsubscribe link', '<h1>This was a test email</h1><p>In the emails you send, this link opens a page where the reader can unsubscribe.</p>')
     : page('Link not found', '<h1>This link doesn’t work</h1><p>It may be from an old email. To stop getting emails, reply to one and ask to be taken off the list.</p>'));
 
-  const unsubscribedPage = (contact) => page('Unsubscribed', `
+  const unsubscribedPage = (contact, token, brand, all) => page('Unsubscribed', `
     <h1>You’re unsubscribed</h1>
-    <p>${esc(contact.email)} won’t get emails from ${esc(from())} anymore.</p>
-    <form method="post" action="${esc(contact.token)}/resubscribe"><button class="quiet" type="submit">I changed my mind, subscribe me again</button></form>`);
+    <p>${esc(contact.email)} won’t get ${all || !brand ? `emails from ${esc(from())}` : esc(nameOf(brand))} anymore.</p>
+    <form method="post" action="${here(token, all ? null : brand, '/resubscribe')}"><button class="quiet" type="submit">I changed my mind, subscribe me again</button></form>`);
 
   router.get('/:token', (req, res) => {
     const contact = find(req.params.token);
     if (!contact) return unknown(res, req.params.token);
-    contact.token = req.params.token;
-    if (contact.status === 'unsubscribed') return res.send(unsubscribedPage(contact));
+    const brand = brandOf(req);
+    const token = req.params.token;
+    if (contact.status === 'unsubscribed') return res.send(unsubscribedPage(contact, token, brand, true));
+    if (brand && brandStatus(contact, brand) === 'unsubscribed') return res.send(unsubscribedPage(contact, token, brand, false));
     res.send(page('Unsubscribe', `
       <h1>Unsubscribe?</h1>
-      <p>Stop sending emails from ${esc(from())} to ${esc(contact.email)}.</p>
-      <form method="post" action="${esc(req.params.token)}"><button type="submit">Unsubscribe</button></form>`));
+      <p>Stop sending ${esc(nameOf(brand))} to ${esc(contact.email)}.</p>
+      <form method="post" action="${here(token, brand)}"><button type="submit">Unsubscribe</button></form>
+      ${brand ? `<form method="post" action="${esc(token)}/all" style="margin-top:12px"><button class="quiet" type="submit">Stop all emails from ${esc(from())}</button></form>` : ''}`));
   });
 
+  // The page's button, and mail apps' one-click Unsubscribe (List-Unsubscribe-Post).
   router.post('/:token', (req, res) => {
     const contact = find(req.params.token);
     if (!contact) return unknown(res, req.params.token);
-    db.prepare("UPDATE contacts SET status = 'unsubscribed', unsubscribed_at = COALESCE(unsubscribed_at, ?), updated_at = ? WHERE id = ?").run(now(), now(), contact.id);
+    const brand = brandOf(req);
+    if (brand) setBrand(contact, brand, 'unsubscribed');
+    else stopAll(contact);
     if (req.body?.['List-Unsubscribe'] === 'One-Click') return res.type('text').send('Unsubscribed.');
-    contact.token = req.params.token;
-    res.send(unsubscribedPage(contact));
+    res.send(unsubscribedPage(contact, req.params.token, brand, !brand));
+  });
+
+  router.post('/:token/all', (req, res) => {
+    const contact = find(req.params.token);
+    if (!contact) return unknown(res, req.params.token);
+    stopAll(contact);
+    res.send(unsubscribedPage(contact, req.params.token, null, true));
   });
 
   router.post('/:token/resubscribe', (req, res) => {
     const contact = find(req.params.token);
     if (!contact) return unknown(res, req.params.token);
-    db.prepare("UPDATE contacts SET status = 'subscribed', unsubscribed_at = NULL, updated_at = ? WHERE id = ?").run(now(), contact.id);
-    res.send(page('Subscribed', `<h1>You’re subscribed again</h1><p>${esc(contact.email)} will get emails from ${esc(from())}.</p>`));
+    const brand = brandOf(req);
+    allowAll(contact);
+    if (brand) setBrand(contact, brand, 'subscribed');
+    res.send(page('Subscribed', `<h1>You’re subscribed again</h1><p>${esc(contact.email)} will get ${brand ? esc(nameOf(brand)) : `emails from ${esc(from())}`}.</p>`));
   });
 
   return router;

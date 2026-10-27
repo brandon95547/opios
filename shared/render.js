@@ -7,13 +7,16 @@ export const MERGE_TAGS = [
   { tag: 'full_name', label: 'Full name' },
   { tag: 'email', label: 'Email address' },
   { tag: 'org_name', label: 'Newsletter name' },
+  { tag: 'brand_heading', label: 'Brand heading' },
+  { tag: 'brand_name', label: 'Brand name' },
+  { tag: 'brand_url', label: 'Brand website' },
   { tag: 'address', label: 'Mailing address' },
   { tag: 'unsubscribe_url', label: 'Unsubscribe link' },
   { tag: 'subject', label: 'Subject' },
   { tag: 'year', label: 'Year' },
 ];
 
-export const TEMPLATE_TAGS = [{ tag: 'content', label: 'Message' }, { tag: 'preheader', label: 'Preview text' }, ...MERGE_TAGS];
+export const TEMPLATE_TAGS = [{ tag: 'content', label: 'Message' }, { tag: 'updates', label: 'Product updates' }, { tag: 'preheader', label: 'Preview text' }, ...MERGE_TAGS];
 
 export const SAMPLE_CONTACT = { first_name: 'Alex', last_name: 'Rivera', email: 'alex@example.com' };
 
@@ -49,7 +52,7 @@ const insertBeforeBodyEnd = (html, piece) => (/<\/body>/i.test(html)
 const PREHEADER = '<div data-preheader style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">{{preheader}}</div>';
 const UNSUBSCRIBE_FOOTER = '<p style="margin:24px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#777;text-align:center">Don’t want these emails? <a href="{{unsubscribe_url}}" style="color:#777">Unsubscribe</a>.</p>';
 
-export function mergeValues({ contact = {}, general = {}, subject = '', preheader = '', unsubscribeUrl = '#' }) {
+export function mergeValues({ contact = {}, general = {}, brand = null, subject = '', preheader = '', unsubscribeUrl = '#' }) {
   const first = contact.first_name || '';
   const last = contact.last_name || '';
   const values = {
@@ -57,7 +60,10 @@ export function mergeValues({ contact = {}, general = {}, subject = '', preheade
     last_name: last,
     full_name: [first, last].filter(Boolean).join(' '),
     email: contact.email || '',
-    org_name: general.orgName || '',
+    org_name: brand?.name || general.orgName || '',
+    brand_name: brand?.name || general.orgName || '',
+    brand_heading: brand?.heading || brand?.name || general.orgName || '',
+    brand_url: brand?.website || '',
     address: general.address || '',
     unsubscribe_url: unsubscribeUrl,
     year: String(new Date().getFullYear()),
@@ -69,20 +75,27 @@ export function mergeValues({ contact = {}, general = {}, subject = '', preheade
 }
 
 // The full HTML of one email. Every email gets an unsubscribe link: a template without one has a
-// line added at the bottom.
-export function renderEmail({ templateHtml, bodyHtml, subject, preheader, contact, general, unsubscribeUrl }) {
+// line added at the bottom. updatesHtml (from renderUpdatesHtml) goes where it says {{updates}}.
+export function renderEmail({ templateHtml, bodyHtml, updatesHtml = '', subject, preheader, contact, general, brand, unsubscribeUrl }) {
   let html = templateHtml || DEFAULT_LAYOUT;
   if (!hasTag(html, 'content')) html = insertBeforeBodyEnd(html, '{{content}}');
   html = html.replace(/\{\{\s*content\s*\}\}/g, () => bodyHtml || '');
+  html = html.replace(/\{\{\s*updates\s*\}\}/g, () => updatesHtml || '');
   if (preheader && !hasTag(html, 'preheader')) html = insertAfterBodyStart(html, PREHEADER);
   if (!hasTag(html, 'unsubscribe_url')) html = insertBeforeBodyEnd(html, UNSUBSCRIBE_FOOTER);
-  const values = mergeValues({ contact, general, subject, preheader, unsubscribeUrl });
+  const values = mergeValues({ contact, general, brand, subject, preheader, unsubscribeUrl });
   return fillTags(html, values);
 }
 
-export const renderSubject = (subject, contact, general) => mergeValues({ contact, general, subject }).subject;
+export const renderSubject = (subject, contact, general, brand) => mergeValues({ contact, general, brand, subject }).subject;
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“', mdash: '—', ndash: '–', hellip: '…', copy: '©' };
+export const templateHasUpdates = (html) => hasTag(html || '', 'updates');
+
+const ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',
+  mdash: '—', ndash: '–', hellip: '…', copy: '©', reg: '®', trade: '™', middot: '·', bull: '•', rarr: '→', larr: '←',
+  times: '×', deg: '°', euro: '€', pound: '£', zwnj: '', shy: '',
+};
 const decodeEntities = (s) => s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (whole, code) => {
   if (code[0] === '#') {
     const n = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10);

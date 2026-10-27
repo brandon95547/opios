@@ -9,7 +9,16 @@ import { Badge, Dialog, Empty, ErrorNote, Loading, PageHeader, formatDate, numbe
 const PAGE = 50;
 const nameOf = (c) => [c.first_name, c.last_name].filter(Boolean).join(' ');
 
-function ContactDialog({ contact, lists, onClose, onSaved, onDelete }) {
+// The brands a contact gets newsletters from, as chips.
+export function BrandChips({ contact, brands }) {
+  if (contact.status === 'unsubscribed') return <Badge status="unsubscribed" />;
+  if (!brands.length) return <Badge status="subscribed" />;
+  const on = brands.filter((b) => contact.brands[b.id] === 'subscribed');
+  if (!on.length) return <span className="muted">No brands</span>;
+  return <span className="tags">{on.map((b) => <span key={b.id} className="tag tag-brand">{b.name}</span>)}</span>;
+}
+
+function ContactDialog({ contact, lists, brands, onClose, onSaved, onDelete }) {
   const editing = Boolean(contact?.id);
   const [form, setForm] = useState(() => ({
     email: contact?.email || '',
@@ -17,18 +26,23 @@ function ContactDialog({ contact, lists, onClose, onSaved, onDelete }) {
     last_name: contact?.last_name || '',
     status: contact?.status || 'subscribed',
     list_ids: contact?.list_ids || [],
+    // New contacts get every brand ticked; they can be unticked.
+    brands: contact?.id ? { ...contact.brands } : Object.fromEntries(brands.map((b) => [b.id, 'subscribed'])),
   }));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const toggleList = (id) => set({ list_ids: form.list_ids.includes(id) ? form.list_ids.filter((x) => x !== id) : [...form.list_ids, id] });
 
+  const toggleBrand = (id) => set({ brands: { ...form.brands, [id]: form.brands[id] === 'subscribed' ? 'unsubscribed' : 'subscribed' } });
+
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     setError('');
     try {
-      const saved = editing ? await api.put(`/api/contacts/${contact.id}`, form) : await api.post('/api/contacts', form);
+      const body = { ...form, brand_ids: Object.entries(form.brands).filter(([, s]) => s === 'subscribed').map(([id]) => Number(id)) };
+      const saved = editing ? await api.put(`/api/contacts/${contact.id}`, body) : await api.post('/api/contacts', body);
       onSaved(saved, editing);
     } catch (err) {
       setError(err.message);
@@ -66,12 +80,28 @@ function ContactDialog({ contact, lists, onClose, onSaved, onDelete }) {
             </div>
           </fieldset>
         )}
+        {brands.length > 0 && (
+          <fieldset className="field">
+            <legend className="field-label">Gets newsletters from</legend>
+            <div className="chips">
+              {brands.map((b) => (
+                <label key={b.id} className={form.brands[b.id] === 'subscribed' ? 'chip chip-on' : 'chip'}>
+                  <input type="checkbox" checked={form.brands[b.id] === 'subscribed'} onChange={() => toggleBrand(b.id)} />
+                  {b.name}
+                </label>
+              ))}
+            </div>
+            {editing && brands.some((b) => contact.brands[b.id] === 'unsubscribed' && form.brands[b.id] === 'subscribed') && (
+              <span className="field-hint">They unsubscribed from that brand. Only subscribe them again if they asked you to.</span>
+            )}
+          </fieldset>
+        )}
         {editing && (
           <label className="field">
-            <span className="field-label">Status</span>
+            <span className="field-label">{brands.length ? 'All emails' : 'Status'}</span>
             <select value={form.status} onChange={(e) => set({ status: e.target.value })}>
-              <option value="subscribed">Subscribed</option>
-              <option value="unsubscribed">Unsubscribed</option>
+              <option value="subscribed">{brands.length ? 'Allowed' : 'Subscribed'}</option>
+              <option value="unsubscribed">{brands.length ? 'Unsubscribed from everything' : 'Unsubscribed'}</option>
             </select>
             {contact.status === 'unsubscribed' && form.status === 'subscribed' && (
               <span className="field-hint">Only subscribe someone again if they asked you to.</span>
@@ -125,6 +155,7 @@ export default function Contacts() {
   const [page, setPage] = useState(0);
   const listId = Number(params.get('list')) || 0;
   const status = params.get('status') || '';
+  const brandFilter = Number(params.get('brand')) || 0;
   const query = params.get('q') || '';
 
   const setFilter = (patch) => {
@@ -136,14 +167,16 @@ export default function Contacts() {
 
   const contacts = data.data?.contacts;
   const lists = data.data?.lists || [];
+  const brands = data.data?.brands || [];
   const list = lists.find((l) => l.id === listId);
   const shown = useMemo(() => {
     if (!contacts) return [];
     const q = query.trim().toLowerCase();
     return contacts.filter((c) => (!listId || c.list_ids.includes(listId))
       && (!status || c.status === status)
+      && (!brandFilter || (c.status === 'subscribed' && c.brands[brandFilter] === 'subscribed'))
       && (!q || c.email.includes(q) || nameOf(c).toLowerCase().includes(q)));
-  }, [contacts, listId, status, query]);
+  }, [contacts, listId, status, brandFilter, query]);
   const pageRows = shown.slice(page * PAGE, page * PAGE + PAGE);
   const allOnPage = pageRows.length > 0 && pageRows.every((c) => selected.has(c.id));
   const listName = (id) => lists.find((l) => l.id === id)?.name;
@@ -167,7 +200,7 @@ export default function Contacts() {
     }
     try {
       const { changed } = await api.post('/api/contacts/bulk', { action, ids, ...extra });
-      const done = { delete: 'deleted', unsubscribe: 'unsubscribed', resubscribe: 'subscribed again', add_to_list: 'added to the list', remove_from_list: 'taken off the list' }[action];
+      const done = { delete: 'deleted', unsubscribe: 'unsubscribed from everything', resubscribe: 'allowed emails again', add_to_list: 'added to the list', remove_from_list: 'taken off the list', subscribe_brand: 'subscribed to the brand', unsubscribe_brand: 'unsubscribed from the brand' }[action];
       toast(`${plural(changed, 'contact')} ${done}.`);
       if (action === 'delete') setSelected(new Set());
       data.reload();
@@ -249,10 +282,18 @@ export default function Contacts() {
                 <Search size={16} aria-hidden="true" />
                 <input type="search" value={query} onChange={(e) => setFilter({ q: e.target.value })} placeholder="Find by name or email" aria-label="Find contacts" />
               </label>
-              <select value={status} onChange={(e) => setFilter({ status: e.target.value })} aria-label="Status">
+              <select
+                value={brandFilter ? `brand:${brandFilter}` : status}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setFilter(v.startsWith('brand:') ? { brand: v.slice(6), status: '' } : { status: v, brand: '' });
+                }}
+                aria-label="Show"
+              >
                 <option value="">Everyone</option>
-                <option value="subscribed">Subscribed</option>
-                <option value="unsubscribed">Unsubscribed</option>
+                {brands.map((b) => <option key={b.id} value={`brand:${b.id}`}>{b.name} subscribers</option>)}
+                <option value="subscribed">{brands.length ? 'Not unsubscribed from everything' : 'Subscribed'}</option>
+                <option value="unsubscribed">{brands.length ? 'Unsubscribed from everything' : 'Unsubscribed'}</option>
               </select>
               <span className="muted table-count">{list ? `${list.name}: ` : ''}{plural(shown.length, 'contact')}</span>
             </div>
@@ -267,8 +308,20 @@ export default function Contacts() {
                   </select>
                 )}
                 {list && <button type="button" className="button button-small" onClick={() => bulk('remove_from_list', { list_id: list.id })}><ListMinus size={15} aria-hidden="true" />Take off {list.name}</button>}
-                <button type="button" className="button button-small" onClick={() => bulk('unsubscribe')}><UserMinus size={15} aria-hidden="true" />Unsubscribe</button>
-                <button type="button" className="button button-small" onClick={() => bulk('resubscribe')}><UserCheck size={15} aria-hidden="true" />Subscribe again</button>
+                {brands.length > 0 && (
+                  <>
+                    <select aria-label="Subscribe the selected contacts to a brand" value="" onChange={(e) => e.target.value && bulk('subscribe_brand', { brand_id: Number(e.target.value) })}>
+                      <option value="">Subscribe to…</option>
+                      {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                    <select aria-label="Unsubscribe the selected contacts from a brand" value="" onChange={(e) => e.target.value && bulk('unsubscribe_brand', { brand_id: Number(e.target.value) })}>
+                      <option value="">Unsubscribe from…</option>
+                      {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </>
+                )}
+                <button type="button" className="button button-small" onClick={() => bulk('unsubscribe')}><UserMinus size={15} aria-hidden="true" />{brands.length ? 'Unsubscribe from everything' : 'Unsubscribe'}</button>
+                <button type="button" className="button button-small" onClick={() => bulk('resubscribe')}><UserCheck size={15} aria-hidden="true" />Allow emails again</button>
                 <button type="button" className="button button-small button-quiet-danger" onClick={() => bulk('delete')}><Trash2 size={15} aria-hidden="true" />Delete</button>
                 <button type="button" className="link-button" onClick={() => setSelected(new Set())}>Clear</button>
               </div>
@@ -283,7 +336,7 @@ export default function Contacts() {
                     <th scope="col" className="check-cell"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Select everyone on this page" /></th>
                     <th scope="col">Contact</th>
                     <th scope="col" className="hide-small">Lists</th>
-                    <th scope="col">Status</th>
+                    <th scope="col">{brands.length ? 'Subscribed to' : 'Status'}</th>
                     <th scope="col" className="hide-small">Added</th>
                   </tr>
                 </thead>
@@ -298,7 +351,7 @@ export default function Contacts() {
                       <td className="hide-small">
                         <span className="tags">{c.list_ids.map((id) => <span key={id} className="tag">{listName(id)}</span>)}</span>
                       </td>
-                      <td><Badge status={c.status} /></td>
+                      <td><BrandChips contact={c} brands={brands} /></td>
                       <td className="hide-small nowrap">{formatDate(c.created_at)}</td>
                     </tr>
                   ))}
@@ -320,6 +373,7 @@ export default function Contacts() {
         <ContactDialog
           contact={dialog.contact}
           lists={lists}
+          brands={brands}
           onClose={() => setDialog(null)}
           onDelete={deleteOne}
           onSaved={(saved, editing) => {

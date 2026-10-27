@@ -6,6 +6,10 @@ import { BASE, api, apiUrl } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { PROVIDERS, SECURITY } from '../../shared/providers.js';
 import { ErrorNote, Loading, PageHeader, useLoad, useToast } from '../ui.jsx';
+import { ApiKeysSection, BrandsSection } from './SettingsBrands.jsx';
+
+const BROWSER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+const ZONES = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [BROWSER_ZONE];
 
 const isLocal = (url) => {
   try {
@@ -144,7 +148,7 @@ function AccountForm({ smtp, onSaved }) {
 
 function DetailsForm({ general, onSaved }) {
   const toast = useToast();
-  const [form, setForm] = useState(general);
+  const [form, setForm] = useState(() => ({ ...general, timeZone: general.timeZone || BROWSER_ZONE }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
@@ -187,6 +191,13 @@ function DetailsForm({ general, onSaved }) {
             {!form.publicUrl && !isLocal(here) && <> <button type="button" className="link-button" onClick={() => set({ publicUrl: here })}>Use {here}</button></>}
           </span>
           {form.publicUrl && isLocal(form.publicUrl) && <span className="field-hint text-amber">That address only works on this computer, so readers couldn’t open it. The links will open an email to you instead.</span>}
+        </label>
+        <label className="field field-narrow">
+          <span className="field-label">Time zone</span>
+          <select value={form.timeZone} onChange={(e) => set({ timeZone: e.target.value })}>
+            {(ZONES.includes(form.timeZone) ? ZONES : [form.timeZone, ...ZONES]).map((z) => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+          </select>
+          <span className="field-hint">For the dates on updates in your emails.</span>
         </label>
         <label className="field field-narrow">
           <span className="field-label">Sending speed (emails a minute)</span>
@@ -302,6 +313,8 @@ export default function Settings() {
         <div className="stack settings">
           <AccountForm smtp={data.data.smtp} onSaved={(smtp) => data.setData((d) => ({ ...d, smtp }))} />
           <DetailsForm general={data.data.general} onSaved={(general) => data.setData((d) => ({ ...d, general }))} />
+          <BrandsSection />
+          <ApiKeysSection />
           <DataSection />
           <LoginForm />
         </div>

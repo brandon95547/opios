@@ -59,6 +59,36 @@ test('an email has the message in the template, the preview text, and always an 
 });
 
 test('the plain-text version keeps words and links, and drops styles and the preview text', () => {
-  const text = htmlToText('<style>p{color:red}</style><div data-preheader>hidden</div><h2>Title</h2><p>See <a href="https://x.com/a?b=1&amp;c=2">this</a>.</p><ul><li>One</li><li>Two</li></ul>');
-  assert.equal(text, 'Title\n\nSee this (https://x.com/a?b=1&c=2).\n\n• One\n• Two');
+  const text = htmlToText('<style>p{color:red}</style><div data-preheader>hidden</div><h2>Title</h2><p>See <a href="https://x.com/a?b=1&amp;c=2">this</a> &middot; now &rarr;</p><ul><li>One</li><li>Two</li></ul>');
+  assert.equal(text, 'Title\n\nSee this (https://x.com/a?b=1&c=2) · now →\n\n• One\n• Two');
+});
+
+test('a visual design compiles to email HTML with places for the message and the updates', async () => {
+  const { default: mjml } = await import('mjml');
+  const { STARTER_DESIGNS, designProblem, designToMjml, normalizeDesign } = await import('../shared/design.js');
+  const design = normalizeDesign({ ...STARTER_DESIGNS.updates.design, blocks: [...STARTER_DESIGNS.updates.design.blocks, { type: 'nope' }, { type: 'spacer', height: 9999 }] });
+  assert.equal(design.blocks.at(-1).height, 120, 'values are kept in range');
+  assert.equal(design.blocks.some((b) => b.type === 'nope'), false, 'unknown blocks are dropped');
+  const { html, errors } = await mjml(designToMjml(design, { brand: { color: '#7c3aed' } }), { validationLevel: 'soft' });
+  assert.deepEqual(errors, []);
+  for (const tag of ['{{content}}', '{{updates}}', '{{brand_heading}}', '{{unsubscribe_url}}', '{{preheader}}']) assert.ok(html.includes(tag), tag);
+  assert.match(html, /#7c3aed/i);
+  assert.equal(designProblem({ blocks: [] }), 'A template needs a Message block, where each message goes.');
+});
+
+test('updates as email HTML: escaped, only web links, dated in the chosen time zone', async () => {
+  const { renderUpdatesHtml, autoUpdates } = await import('../shared/updates.js');
+  const html = renderUpdatesHtml([{ id: 1, kind: 'fixed', title: '<b>Bold</b> claim', body: 'Line one\nLine two', link: 'javascript:alert(1)', product_name: 'Talari', happened_at: '2026-10-27T03:00:00Z' }], { timeZone: 'America/New_York' });
+  assert.match(html, /&lt;b&gt;Bold&lt;\/b&gt; claim/);
+  assert.match(html, /Line one<br>Line two/);
+  assert.doesNotMatch(html, /javascript:/);
+  assert.match(html, /Oct 26, 2026/, 'still the 26th in New York');
+  assert.equal(renderUpdatesHtml([]), '');
+  const picked = autoUpdates([
+    { id: 1, status: 'published', sent: false, happened_at: '2026-10-01' },
+    { id: 2, status: 'published', sent: true, happened_at: '2026-10-05' },
+    { id: 3, status: 'draft', sent: false, happened_at: '2026-10-06' },
+    { id: 4, status: 'published', sent: false, happened_at: '2026-10-04' },
+  ], 5);
+  assert.deepEqual(picked.map((u) => u.id), [4, 1]);
 });
