@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CircleAlert, CircleCheck } from 'lucide-react';
-import { api } from '../api.js';
+import { BASE, api } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { PROVIDERS, SECURITY } from '../../shared/providers.js';
 import { ErrorNote, Loading, PageHeader, useLoad, useToast } from '../ui.jsx';
@@ -148,7 +148,7 @@ function DetailsForm({ general, onSaved }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
-  const here = window.location.origin;
+  const here = window.location.origin + BASE;
 
   async function submit(e) {
     e.preventDefault();

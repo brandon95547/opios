@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createBrowserRouter, Navigate, RouterProvider, useLocation } from 'react-router-dom';
+import { BASE } from './api.js';
 import { AuthProvider, useAuth } from './auth.jsx';
 import { Loading, ToastProvider } from './ui.jsx';
 import Layout from './Layout.jsx';
@@ -41,7 +42,7 @@ const router = createBrowserRouter([
       { path: '*', element: <NotFound /> },
     ],
   },
-]);
+], { basename: BASE || '/' });
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

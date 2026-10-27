@@ -42,21 +42,39 @@ A regular Gmail account sends about 500 emails a day (Google Workspace, 2,000). 
 
 ## Putting it online
 
+With Docker, on the server:
+
 ```bash
-npm run build
-npm start
+git clone https://github.com/brandon95547/opios.git /var/www/opios
+cd /var/www/opios
+cp .env.example .env              # set OPIOS_BASE_PATH and OPIOS_SETUP_CODE in it
+mkdir -p data && chown 1000:1000 data
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-This serves the built app and the API on one port (5340 by default). Put a proxy in front for HTTPS (nginx or Caddy), and pass the `Host` header through. Then set the public web address in Settings.
+This runs one container on 127.0.0.1:5340 (`docker-compose.prod.yml`). Docker restarts it after a reboot. Put nginx in front for HTTPS: `deploy/nginx-location.conf` serves Opios under a path of an existing site, such as https://www.example.com/opios. Then set that address as the public web address in Settings.
 
-Settings can go in a `.env` file. See `.env.example` for:
+To release a new version, pull and rebuild:
+
+```bash
+cd /var/www/opios && git pull && docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Without Docker, `npm run build`, then `npm start`.
+
+**The first login on a server.** Whoever opens Opios first creates its login, so on a server it asks for the setup code from `.env` (`OPIOS_SETUP_CODE`). The code does nothing once the login exists. With no code set, the page stays closed; make the login on the server with `npm run reset-password` instead (with Docker, `docker compose -f docker-compose.prod.yml exec app npm run reset-password`).
+
+Settings go in a `.env` file. See `.env.example` for:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `PORT` | `5340` | The port to listen on |
 | `HOST` | `127.0.0.1` | The address to listen on (`0.0.0.0` for the whole network) |
+| `OPIOS_BASE_PATH` | (none) | The path Opios is served under, such as `/opios`; built in, so rebuild after changing it |
+| `OPIOS_SETUP_CODE` | (none) | Needed to create the login in the browser on a server |
 | `OPIOS_DATA_DIR` | `./data` | Where the database and the key are kept |
 | `OPIOS_SECRET` | (a key in the data folder) | The key that encrypts the saved email password |
+| `OPIOS_TRUST_PROXY` | `loopback, uniquelocal` | Which proxies to believe about the visitor's address and https |
 
 **Back up the data folder.** It holds the database (`opios.sqlite3`) and `secret.key`. Without the key, Opios can't read the saved email password, and you enter it again in Settings.
 

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Download, ListMinus, Pencil, Plus, Search, Trash2, Upload, UserCheck, UserMinus, Users } from 'lucide-react';
-import { api } from '../api.js';
+import { api, apiUrl } from '../api.js';
 import { Badge, Dialog, Empty, ErrorNote, Loading, PageHeader, formatDate, number, plural, useConfirm, useLoad, useToast } from '../ui.jsx';
 
 const PAGE = 50;
@@ -201,7 +201,7 @@ export default function Contacts() {
   return (
     <>
       <PageHeader title="Contacts">
-        <a className="button" href={exportUrl} download><Download size={17} aria-hidden="true" />Export</a>
+        <a className="button" href={apiUrl(exportUrl)} download><Download size={17} aria-hidden="true" />Export</a>
         <Link className="button" to={listId ? `/contacts/import?list=${listId}` : '/contacts/import'}><Upload size={17} aria-hidden="true" />Import CSV</Link>
         <button type="button" className="button button-primary" onClick={() => setDialog({ kind: 'contact', contact: listId ? { list_ids: [listId] } : null })}><Plus size={18} aria-hidden="true" />Add contact</button>
       </PageHeader>

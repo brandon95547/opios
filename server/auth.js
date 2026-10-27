@@ -1,5 +1,7 @@
 // Signing in. Opios has one login for now (the users table allows more later). The first visit,
-// when no login exists yet, asks for one; after that the setup route is closed.
+// when no login exists yet, asks for one; after that the setup route is closed. On a server that
+// first visit could be anyone's, so there it also asks for the setup code (OPIOS_SETUP_CODE),
+// and without one it stays closed: the login is then made with `npm run reset-password`.
 import crypto from 'node:crypto';
 import { promisify } from 'node:util';
 import express from 'express';
@@ -55,7 +57,12 @@ function checkUsername(username) {
   return u;
 }
 
-export function createAuth(db) {
+const sameText = (a, b) => crypto.timingSafeEqual(
+  crypto.createHash('sha256').update(String(a)).digest(),
+  crypto.createHash('sha256').update(String(b)).digest(),
+);
+
+export function createAuth(db, { cookiePath = '/', setupCode = '', production = false } = {}) {
   const findSession = db.prepare(`
     SELECT s.token_hash, s.expires_at, u.id, u.username FROM sessions s
     JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`);
@@ -66,7 +73,7 @@ export function createAuth(db) {
     const token = crypto.randomBytes(32).toString('base64url');
     const expires = new Date(Date.now() + SESSION_DAYS * DAY);
     db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').run(hashToken(token), userId, expires.toISOString());
-    res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: '/', expires });
+    res.cookie(COOKIE, token, { httpOnly: true, sameSite: 'lax', secure: req.secure, path: cookiePath, expires });
   }
 
   function currentUser(req) {
@@ -101,16 +108,26 @@ export function createAuth(db) {
   }
 
   const userCount = () => db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
+  const setupMode = setupCode ? 'code' : production ? 'closed' : 'open';
 
   const router = express.Router();
 
   router.get('/state', (req, res) => {
     const user = currentUser(req);
-    res.json({ user, needsSetup: !user && userCount() === 0 });
+    const needsSetup = !user && userCount() === 0;
+    res.json({ user, needsSetup, setup: needsSetup ? setupMode : null });
   });
 
   router.post('/setup', async (req, res) => {
     if (userCount() > 0) fail(403, 'A login already exists. Sign in instead.');
+    if (setupMode === 'closed') fail(403, 'Creating the login here is turned off. Set OPIOS_SETUP_CODE on the server, or run npm run reset-password there.');
+    if (setupMode === 'code') {
+      if (tooManyFailures(req.ip)) fail(429, 'Too many wrong codes. Try again in 15 minutes.');
+      if (!sameText(String(req.body?.setupCode ?? '').trim(), setupCode)) {
+        noteFailure(req.ip);
+        fail(403, 'That setup code isn’t right.');
+      }
+    }
     const username = checkUsername(req.body?.username);
     const hash = await hashPassword(checkPassword(req.body?.password));
     if (userCount() > 0) fail(403, 'A login already exists. Sign in instead.');
@@ -137,7 +154,7 @@ export function createAuth(db) {
   router.post('/logout', (req, res) => {
     const token = readCookie(req, COOKIE);
     if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hashToken(token));
-    res.clearCookie(COOKIE, { path: '/' });
+    res.clearCookie(COOKIE, { path: cookiePath });
     res.json({ ok: true });
   });
 

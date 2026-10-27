@@ -31,15 +31,15 @@ function errors(err, req, res, next) { // eslint-disable-line no-unused-vars
   res.status(err.status || 500).json({ error: err.status ? err.message : 'Something went wrong on the server.' });
 }
 
-export function createApp({ dataDir, production = false, log = console } = {}) {
+export function createApp({ dataDir, production = false, basePath = '', setupCode = '', trustProxy = 'loopback', log = console } = {}) {
   const db = openDb(dataDir);
   const settings = createSettings(db, loadKey(dataDir));
   const sender = createSender({ db, settings, log });
-  const auth = createAuth(db);
+  const auth = createAuth(db, { cookiePath: basePath || '/', setupCode, production });
 
   const app = express();
   app.disable('x-powered-by');
-  app.set('trust proxy', 'loopback');
+  app.set('trust proxy', trustProxy);
   app.use((req, res, next) => {
     res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'DENY' });
     if (production) {
@@ -49,7 +49,9 @@ export function createApp({ dataDir, production = false, log = console } = {}) {
     next();
   });
 
-  app.use('/u', unsubscribeRouter({ db, settings }));
+  // Everything is served under basePath (such as /opios), so Opios can share a domain.
+  const site = express.Router();
+  site.use('/u', unsubscribeRouter({ db, settings }));
 
   const api = express.Router();
   api.use(express.json({ limit: '20mb' }));
@@ -63,7 +65,8 @@ export function createApp({ dataDir, production = false, log = console } = {}) {
   api.use(settingsRouter({ settings }));
   api.use((req, res) => res.status(404).json({ error: 'Not found.' }));
   api.use(errors);
-  app.use('/api', api);
+  site.use('/api', api);
+  app.use(basePath || '/', site);
 
   // Picks up any message that was being sent when the app last stopped.
   sender.kick();

@@ -1,11 +1,15 @@
 // Talking to the Opios server. Every call returns the JSON reply, or throws an Error whose message
 // is the server's own explanation.
 
+// The path Opios is served under ('' or, say, '/opios'), set when it was built.
+export const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+export const apiUrl = (url) => BASE + url;
+
 let signedOut = () => {};
 export const onSignedOut = (fn) => { signedOut = fn; };
 
 async function request(method, url, body) {
-  const res = await fetch(url, {
+  const res = await fetch(apiUrl(url), {
     method,
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),

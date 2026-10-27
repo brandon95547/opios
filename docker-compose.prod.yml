@@ -1,0 +1,30 @@
+# Opios on a server: one container on 127.0.0.1:5340, behind a proxy for HTTPS
+# (deploy/nginx-location.conf). Docker brings it back after a reboot (`restart: unless-stopped`).
+#
+# Settings come from .env next to this file (not in git): OPIOS_BASE_PATH, the path it is served
+# under (such as /opios), and OPIOS_SETUP_CODE, which the first visit needs to create the login.
+#
+# The database and the email-password key are in ./data, owned by uid 1000 (the container's
+# `node` user): `mkdir -p data && chown 1000:1000 data` before the first start. Back it up.
+name: opios
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        OPIOS_BASE_PATH: ${OPIOS_BASE_PATH:-}
+    image: opios-app
+    restart: unless-stopped
+    env_file: .env
+    # These win over .env: inside the container Opios listens on every address (only the port
+    # published below reaches it) and keeps its data in the mounted folder.
+    environment:
+      OPIOS_BASE_PATH: ${OPIOS_BASE_PATH:-}
+      HOST: 0.0.0.0
+      PORT: 5340
+      OPIOS_DATA_DIR: /app/data
+    ports:
+      - "127.0.0.1:5340:5340"
+    volumes:
+      - ./data:/app/data

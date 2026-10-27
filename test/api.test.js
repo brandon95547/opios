@@ -42,9 +42,9 @@ function decode(raw) {
   return Buffer.from(qp, 'latin1').toString('utf8') + b64;
 }
 
-async function startOpios() {
+async function startOpios(options = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opios-test-'));
-  const opios = createApp({ dataDir, log: quiet });
+  const opios = createApp({ dataDir, log: quiet, ...options });
   const server = await new Promise((resolve) => { const s = opios.app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
   let cookie = '';
@@ -83,7 +83,7 @@ async function startOpios() {
 test('the login: set up once, then sign in; wrong passwords and other sites are turned away', async () => {
   const o = await startOpios();
   try {
-    assert.deepEqual((await o.call('GET', '/api/auth/state')).body, { user: null, needsSetup: true });
+    assert.deepEqual((await o.call('GET', '/api/auth/state')).body, { user: null, needsSetup: true, setup: 'open' });
     assert.equal((await o.call('GET', '/api/contacts')).status, 401);
     assert.equal((await o.call('POST', '/api/auth/setup', { username: 'me', password: 'short' })).status, 400);
     assert.equal((await o.call('POST', '/api/auth/setup', { username: 'me', password: 'long-enough-1' })).status, 201);
@@ -106,6 +106,35 @@ test('the login: set up once, then sign in; wrong passwords and other sites are 
     assert.equal((await o.call('GET', '/api/contacts')).status, 200);
   } finally {
     await o.close();
+  }
+});
+
+test('on a server: served under its path, and the first login needs the setup code', async () => {
+  const o = await startOpios({ basePath: '/opios', setupCode: 'four-word-setup-code', production: true });
+  try {
+    assert.equal((await o.call('GET', '/api/auth/state')).status, 404);
+    assert.deepEqual((await o.call('GET', '/opios/api/auth/state')).body, { user: null, needsSetup: true, setup: 'code' });
+    const login = { username: 'me', password: 'long-enough-1' };
+    assert.equal((await o.call('POST', '/opios/api/auth/setup', login)).status, 403);
+    assert.equal((await o.call('POST', '/opios/api/auth/setup', { ...login, setupCode: 'wrong' })).status, 403);
+    const made = await o.call('POST', '/opios/api/auth/setup', { ...login, setupCode: ' four-word-setup-code ' });
+    assert.equal(made.status, 201);
+    assert.match(made.headers.get('set-cookie'), /; Path=\/opios;/);
+    assert.equal((await o.call('GET', '/opios/api/contacts')).status, 200);
+    // Once the login exists, the code opens nothing.
+    assert.equal((await o.call('POST', '/opios/api/auth/setup', { username: 'x', password: 'long-enough-2', setupCode: 'four-word-setup-code' })).status, 403);
+    assert.match((await o.call('GET', '/opios/u/not-a-real-token-at-all')).body, /This link doesn’t work/);
+  } finally {
+    await o.close();
+  }
+
+  // On a server with no setup code, the login can only be made there (npm run reset-password).
+  const closed = await startOpios({ production: true });
+  try {
+    assert.equal((await closed.call('GET', '/api/auth/state')).body.setup, 'closed');
+    assert.equal((await closed.call('POST', '/api/auth/setup', { username: 'me', password: 'long-enough-1' })).status, 403);
+  } finally {
+    await closed.close();
   }
 });
 

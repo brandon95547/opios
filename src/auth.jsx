@@ -6,11 +6,11 @@ const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }) {
-  const [state, setState] = useState({ loading: true, user: null, needsSetup: false });
+  const [state, setState] = useState({ loading: true, user: null, needsSetup: false, setup: null });
 
   const refresh = useCallback(() => api.get('/api/auth/state')
-    .then((s) => setState({ loading: false, user: s.user, needsSetup: s.needsSetup }))
-    .catch(() => setState({ loading: false, user: null, needsSetup: false })), []);
+    .then((s) => setState({ loading: false, user: s.user, needsSetup: s.needsSetup, setup: s.setup }))
+    .catch(() => setState({ loading: false, user: null, needsSetup: false, setup: null })), []);
 
   useEffect(() => {
     refresh();
@@ -22,15 +22,15 @@ export function AuthProvider({ children }) {
     ...state,
     async signIn(username, password) {
       const { user } = await api.post('/api/auth/login', { username, password });
-      setState({ loading: false, user, needsSetup: false });
+      setState({ loading: false, user, needsSetup: false, setup: null });
     },
-    async setUp(username, password) {
-      const { user } = await api.post('/api/auth/setup', { username, password });
-      setState({ loading: false, user, needsSetup: false });
+    async setUp(username, password, setupCode) {
+      const { user } = await api.post('/api/auth/setup', { username, password, setupCode });
+      setState({ loading: false, user, needsSetup: false, setup: null });
     },
     async signOut() {
       await api.post('/api/auth/logout').catch(() => {});
-      setState({ loading: false, user: null, needsSetup: false });
+      setState({ loading: false, user: null, needsSetup: false, setup: null });
     },
     setUser: (user) => setState((s) => ({ ...s, user })),
   };
