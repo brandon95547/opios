@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { SMTPServer } from 'smtp-server';
 import { createApp } from '../server/app.js';
 
@@ -58,7 +59,8 @@ async function startOpios(options = {}) {
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
     const type = res.headers.get('content-type') || '';
-    return { status: res.status, headers: res.headers, body: type.includes('json') ? await res.json() : await res.text() };
+    const reply = type.includes('json') ? await res.json() : /^text\//.test(type) ? await res.text() : Buffer.from(await res.arrayBuffer());
+    return { status: res.status, headers: res.headers, body: reply };
   };
   const waitUntilSent = async (id) => {
     for (let i = 0; i < 200; i += 1) {
@@ -181,6 +183,36 @@ test('contacts: added by hand, imported from rows, exported; an import keeps uns
 
     const bulk = await o.call('POST', '/api/contacts/bulk', { action: 'delete', ids: [annNow.id] });
     assert.equal(bulk.body.changed, 1);
+  } finally {
+    await o.close();
+  }
+});
+
+test('the whole database downloads as a SQLite copy, without sign-in sessions', async () => {
+  const o = await startOpios();
+  try {
+    assert.equal((await o.call('GET', '/api/export/database')).status, 401);
+    await o.call('POST', '/api/auth/setup', { username: 'me', password: 'long-enough-1' });
+    await o.call('POST', '/api/contacts', { email: 'ann@example.com', first_name: 'Ann' });
+    await o.call('PUT', '/api/settings/smtp', { provider: 'gmail', host: 'smtp.gmail.com', port: 465, security: 'ssl', user: 'me@gmail.com', pass: 'app-password-1', fromEmail: 'me@gmail.com' });
+
+    const { status, headers, body } = await o.call('GET', '/api/export/database');
+    assert.equal(status, 200);
+    assert.match(headers.get('content-disposition'), /attachment; filename="?opios-database-\d{4}-\d\d-\d\d\.sqlite3/);
+
+    // Read the downloaded file back as a database.
+    const file = path.join(o.dataDir, 'downloaded.sqlite3');
+    fs.writeFileSync(file, body);
+    assert.equal(fs.readFileSync(file).subarray(0, 15).toString(), 'SQLite format 3');
+    const copy = new DatabaseSync(file);
+    assert.deepEqual(copy.prepare('SELECT email, first_name FROM contacts').all().map((r) => ({ ...r })), [{ email: 'ann@example.com', first_name: 'Ann' }]);
+    assert.equal(copy.prepare('SELECT COUNT(*) AS n FROM templates').get().n, 3);
+    assert.equal(copy.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0);
+    assert.equal(copy.prepare("SELECT value FROM settings WHERE key = 'smtp'").get().value.includes('app-password-1'), false);
+    copy.close();
+    const leftover = () => fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('opios-export-'));
+    for (let i = 0; i < 40 && leftover().length; i += 1) await new Promise((r) => setTimeout(r, 25));
+    assert.deepEqual(leftover(), [], 'the temporary copy is removed');
   } finally {
     await o.close();
   }

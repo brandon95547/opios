@@ -446,6 +446,11 @@ details.card[open] .field { margin-bottom: 12px; }
 .hint-box ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
 
 .settings { max-width: 900px; }
+.downloads { display: flex; flex-direction: column; gap: 12px; }
+.download { display: flex; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.download h3 { font-size: 15px; margin-bottom: 2px; }
+.download p { font-size: 14px; max-width: 60ch; }
+@media (max-width: 600px) { .download { flex-direction: column; align-items: flex-start; } }
 
 /* Signing in */
 

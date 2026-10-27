@@ -3,6 +3,7 @@
 A simple newsletter system. Keep your contacts, design a template, write a message, and send it through your own Gmail or any SMTP account.
 
 - **Contacts**: import a CSV file (or rows pasted from a spreadsheet), or add people one by one. File them in lists, search, export, and unsubscribe or delete several at once. An import never resubscribes someone who unsubscribed.
+- **Your data**: download every contact as a CSV, or the whole database as one file, from Settings.
 - **Templates**: three starters (Classic, Minimal, Announcement), edited as HTML beside a live preview. A message goes where the template says `{{content}}`.
 - **Messages**: a formatted editor with headings, lists, links and pictures. Choose the recipients: everyone, some lists, or people you pick. Drafts save as you type. Send yourself a test, then send.
 - **Sending**: in the background, one email at a time, at the speed you set. Each email is personalized, has a plain-text version and an unsubscribe link, and carries the List-Unsubscribe headers that put an Unsubscribe button in Gmail and Apple Mail.
@@ -76,7 +77,14 @@ Settings go in a `.env` file. See `.env.example` for:
 | `OPIOS_SECRET` | (a key in the data folder) | The key that encrypts the saved email password |
 | `OPIOS_TRUST_PROXY` | `loopback, uniquelocal` | Which proxies to believe about the visitor's address and https |
 
-**Back up the data folder.** It holds the database (`opios.sqlite3`) and `secret.key`. Without the key, Opios can't read the saved email password, and you enter it again in Settings.
+**Keep copies of your data.** Contacts and messages are kept only in the data folder where Opios runs, never in this repository. **Settings › Your data** downloads them:
+
+- **Export contacts**: a CSV of every contact. Import CSV takes it back.
+- **Download database**: the whole database as one SQLite file. Sign-in sessions are left out, and the saved email password stays encrypted.
+
+To restore a downloaded database, stop Opios and put the file in the data folder as `opios.sqlite3`, replacing the one there. Then start Opios and enter the email password again in Settings.
+
+The data folder also holds `secret.key`. Without it, Opios can't read the saved email password, and you enter it again in Settings.
 
 Forgot the password? Run `npm run reset-password` in the Opios folder, on the computer it runs on.
 

@@ -1,4 +1,9 @@
-// The Settings page's routes, and the overview on the home page.
+// The Settings page's routes, the database download, and the overview on the home page.
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import express from 'express';
 import { isEmail, normalizeEmail } from '../shared/email.js';
 import { fail } from './http.js';
@@ -47,6 +52,28 @@ export function settingsRouter({ settings }) {
     res.json({ ok: true });
   });
 
+  return router;
+}
+
+// The whole database as one SQLite file: contacts and lists, templates, messages and their
+// reports, and settings. It is a consistent copy taken while Opios runs. Sign-in sessions are
+// left out, and the email password stays encrypted (its key, secret.key, isn't in the file), so
+// a restored copy asks for that password again in Settings.
+export function exportRouter({ db }) {
+  const router = express.Router();
+  router.get('/export/database', (req, res) => {
+    const file = path.join(os.tmpdir(), `opios-export-${crypto.randomUUID()}.sqlite3`);
+    try {
+      db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+      const copy = new DatabaseSync(file);
+      copy.exec('DELETE FROM sessions; VACUUM;');
+      copy.close();
+    } catch (err) {
+      fs.rmSync(file, { force: true });
+      throw err;
+    }
+    res.download(file, `opios-database-${new Date().toISOString().slice(0, 10)}.sqlite3`, () => fs.rmSync(file, { force: true }));
+  });
   return router;
 }
 

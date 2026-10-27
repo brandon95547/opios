@@ -8,7 +8,7 @@ import { createSender } from './sender.js';
 import { contactsRouter } from './contacts.js';
 import { templatesRouter } from './templates.js';
 import { campaignsRouter } from './campaigns.js';
-import { settingsRouter, overviewRouter } from './routes.js';
+import { settingsRouter, overviewRouter, exportRouter } from './routes.js';
 import { unsubscribeRouter } from './unsubscribe.js';
 
 // Changes come only from Opios's own pages: a request another site's page makes is turned away.
@@ -63,6 +63,7 @@ export function createApp({ dataDir, production = false, basePath = '', setupCod
   api.use(templatesRouter({ db }));
   api.use(campaignsRouter({ db, settings, sender }));
   api.use(settingsRouter({ settings }));
+  api.use(exportRouter({ db }));
   api.use((req, res) => res.status(404).json({ error: 'Not found.' }));
   api.use(errors);
   site.use('/api', api);

@@ -1,8 +1,8 @@
 // Settings: the email account messages go out from, the newsletter's details, and the login.
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { CircleAlert, CircleCheck } from 'lucide-react';
-import { BASE, api } from '../api.js';
+import { CircleAlert, CircleCheck, Download } from 'lucide-react';
+import { BASE, api, apiUrl } from '../api.js';
 import { useAuth } from '../auth.jsx';
 import { PROVIDERS, SECURITY } from '../../shared/providers.js';
 import { ErrorNote, Loading, PageHeader, useLoad, useToast } from '../ui.jsx';
@@ -257,6 +257,35 @@ function LoginForm() {
   );
 }
 
+// Copies to keep. Contacts and the database live only where Opios runs, never in its code or on
+// GitHub, so these downloads are how they leave it.
+function DataSection() {
+  return (
+    <section className="card stack" id="data" aria-labelledby="data-title">
+      <div>
+        <h2 id="data-title" className="card-title">Your data</h2>
+        <p className="muted">Your contacts and messages are kept only where Opios runs. Download copies now and then to keep them safe.</p>
+      </div>
+      <div className="downloads">
+        <div className="download">
+          <div>
+            <h3>Contacts</h3>
+            <p className="muted">A CSV file of every contact, with their names, lists and whether they’re subscribed. It opens in Excel or Google Sheets, and Import CSV takes it back.</p>
+          </div>
+          <a className="button" href={apiUrl('/api/contacts/export.csv')} download><Download size={17} aria-hidden="true" />Export contacts</a>
+        </div>
+        <div className="download">
+          <div>
+            <h3>Everything</h3>
+            <p className="muted">The whole database as one SQLite file: contacts and lists, templates, messages and their sending reports, and settings. The saved email password stays locked in it, so after a restore you enter it again.</p>
+          </div>
+          <a className="button" href={apiUrl('/api/export/database')} download><Download size={17} aria-hidden="true" />Download database</a>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const data = useLoad(() => api.get('/api/settings'));
   const location = useLocation();
@@ -273,6 +302,7 @@ export default function Settings() {
         <div className="stack settings">
           <AccountForm smtp={data.data.smtp} onSaved={(smtp) => data.setData((d) => ({ ...d, smtp }))} />
           <DetailsForm general={data.data.general} onSaved={(general) => data.setData((d) => ({ ...d, general }))} />
+          <DataSection />
           <LoginForm />
         </div>
       )}
