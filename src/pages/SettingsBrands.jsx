@@ -94,26 +94,44 @@ function BrandDialog({ brand, onClose, onSaved, onDelete }) {
 }
 
 function ProductDialog({ product, onClose, onSaved }) {
-  const [name, setName] = useState(product.name);
-  const [url, setUrl] = useState(product.url || '');
+  const [form, setForm] = useState({
+    name: product.name,
+    url: product.url || '',
+    version: product.version || '',
+    description: product.description || '',
+    image_url: product.image_url || '',
+  });
   const [error, setError] = useState('');
+  const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   async function submit(e) {
     e.preventDefault();
     try {
-      onSaved(await api.put(`/api/products/${product.id}`, { name, url }));
+      onSaved(await api.put(`/api/products/${product.id}`, form));
     } catch (err) { setError(err.message); }
   }
   return (
     <Dialog open onClose={onClose} title="Edit product">
       <form className="stack" onSubmit={submit}>
-        <label className="field">
-          <span className="field-label">Name</span>
-          <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} />
-        </label>
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Name</span>
+            <input value={form.name} onChange={(e) => set({ name: e.target.value })} required maxLength={80} />
+          </label>
+          <label className="field">
+            <span className="field-label">Version <span className="muted">(optional)</span></span>
+            <input value={form.version} onChange={(e) => set({ version: e.target.value })} placeholder="1.2.0" maxLength={30} />
+          </label>
+        </div>
         <label className="field">
           <span className="field-label">Web address <span className="muted">(optional)</span></span>
-          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://" />
+          <input type="url" value={form.url} onChange={(e) => set({ url: e.target.value })} placeholder="https://" />
+          <span className="field-hint">Where “Learn more” goes in the newsletter’s Products block.</span>
         </label>
+        <label className="field">
+          <span className="field-label">Description <span className="muted">(optional)</span></span>
+          <textarea rows={3} value={form.description} onChange={(e) => set({ description: e.target.value })} maxLength={400} placeholder="A sentence on what it does and who it’s for." />
+        </label>
+        <MediaPicker label="Picture (optional)" value={form.image_url} onChange={(image_url) => set({ image_url })} hint="Shown on the product’s card. Three by two (such as 600 × 400 pixels) suits the card." />
         {error && <p className="form-error" role="alert">{error}</p>}
         <div className="dialog-actions">
           <button type="button" className="button" onClick={onClose}>Cancel</button>

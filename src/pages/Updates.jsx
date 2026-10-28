@@ -133,16 +133,27 @@ export default function Updates() {
   const [confirmElement, confirm] = useConfirm();
   const toast = useToast();
   const brandId = Number(params.get('brand')) || 0;
+  const productId = Number(params.get('product')) || 0;
   const show = params.get('show') || '';
+  const sort = params.get('sort') || 'newest';
   const setFilter = (key, value) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value); else next.delete(key);
+    if (key === 'brand') next.delete('product');
     setParams(next, { replace: true });
   };
 
   const d = data.data;
-  const shown = useMemo(() => (d ? d.updates.filter((u) => (!brandId || u.brand_id === brandId)
-    && (!show || (show === 'draft' ? u.status === 'draft' : show === 'sent' ? u.sent : u.status === 'published' && !u.sent))) : []), [d, brandId, show]);
+  const products = useMemo(() => (d ? d.brands.filter((b) => !brandId || b.id === brandId).flatMap((b) => b.products.map((p) => ({ ...p, brand: b.name }))) : []), [d, brandId]);
+  const shown = useMemo(() => {
+    if (!d) return [];
+    const list = d.updates.filter((u) => (!brandId || u.brand_id === brandId)
+      && (!productId || u.product_id === productId)
+      && (!show || (show === 'draft' ? u.status === 'draft' : show === 'sent' ? u.sent : u.status === 'published' && !u.sent)));
+    const byDate = (a, b) => (sort === 'oldest' ? a.happened_at.localeCompare(b.happened_at) : b.happened_at.localeCompare(a.happened_at));
+    if (sort === 'product') return [...list].sort((a, b) => a.product_name.localeCompare(b.product_name) || b.happened_at.localeCompare(a.happened_at));
+    return [...list].sort(byDate);
+  }, [d, brandId, productId, show, sort]);
 
   async function remove(u) {
     const yes = await confirm({ title: 'Delete this update?', message: `“${u.title}” is deleted. Newsletters already sent keep it.`, confirm: 'Delete', danger: true });
@@ -178,6 +189,15 @@ export default function Updates() {
                 </button>
               ))}
             </div>
+            <select value={productId || ''} onChange={(e) => setFilter('product', e.target.value)} aria-label="Product">
+              <option value="">Every product</option>
+              {products.map((p) => <option key={p.id} value={p.id}>{brandId || d.brands.length === 1 ? p.name : `${p.brand} › ${p.name}`}</option>)}
+            </select>
+            <select value={sort} onChange={(e) => setFilter('sort', e.target.value === 'newest' ? '' : e.target.value)} aria-label="Sort">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="product">By product</option>
+            </select>
             <select value={show} onChange={(e) => setFilter('show', e.target.value)} aria-label="Show">
               <option value="">Every update</option>
               <option value="new">Not sent yet</option>

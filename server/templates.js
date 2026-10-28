@@ -63,7 +63,8 @@ export function templatesRouter({ db }) {
       const s = STARTER_DESIGNS[req.body.starter];
       const { design, html } = await compiled(s.design, brandId);
       const brand = getBrand(db, brandId);
-      t = { name: text(req.body.name, 100) || (brand ? `${brand.name} updates` : s.name), kind: 'blocks', design, html, brand_id: brandId };
+      const fallback = req.body.starter === 'updates' && brand ? `${brand.name} updates` : s.name;
+      t = { name: text(req.body.name, 100) || fallback, kind: 'blocks', design, html, brand_id: brandId };
     } else if (req.body?.starter) {
       const starter = STARTER_TEMPLATES.find((x) => x.key === req.body.starter) || fail(404, 'No such starter.');
       t = { name: nameOf(req.body.name || starter.name), kind: 'html', design: null, html: starter.html, brand_id: brandId };

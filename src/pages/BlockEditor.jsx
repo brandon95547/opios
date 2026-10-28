@@ -5,20 +5,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useBlocker } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronLeft, Copy, Plus, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
-import { BLOCK_TYPES, designProblem, designToMjml, newBlock, normalizeDesign, updatesOptions } from '../../shared/design.js';
+import { BLOCK_TYPES, designProblem, designToMjml, newBlock, normalizeDesign, productsOptions, updatesOptions } from '../../shared/design.js';
 import { SAMPLE_UPDATES, renderUpdatesHtml } from '../../shared/updates.js';
+import { SAMPLE_PRODUCTS, pickProducts, renderProductsHtml } from '../../shared/products.js';
 import { SAMPLE_CONTACT, renderEmail } from '../../shared/render.js';
 import { Dialog, PageHeader, useToast } from '../ui.jsx';
-import { SizeToggle } from '../components/EmailPreview.jsx';
+import { FitStage, SizeToggle } from '../components/EmailPreview.jsx';
 import { BlockSettings, StyleSettings } from '../components/BlockSettings.jsx';
 
 const SAMPLE_MESSAGE = '<p>Hi {{first_name|there}},</p><p>This is where each message goes: the text you write when you send a newsletter, in this template’s colors and font.</p>';
-const ADDABLE = ['text', 'image', 'button', 'updates', 'columns', 'divider', 'spacer', 'header', 'footer'];
+const ADDABLE = ['text', 'image', 'button', 'section', 'updates', 'products', 'cards', 'callout', 'columns', 'divider', 'spacer', 'masthead', 'header', 'footer'];
 
 const summary = (b) => {
   const plain = (html) => String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   switch (b.type) {
     case 'header': return b.text;
+    case 'masthead': return b.image ? 'Wordmark picture' : b.title;
+    case 'section': return b.title;
+    case 'products': return b.productIds.length ? `${b.productIds.length} chosen` : 'All the brand’s products';
+    case 'cards': return b.items.map((i) => i.title).filter(Boolean).join(', ') || 'No cards yet';
+    case 'callout': return b.title;
     case 'text': case 'footer': return plain(b.html);
     case 'columns': return plain(b.left);
     case 'image': return b.alt || (b.src ? 'Picture' : 'No picture yet');
@@ -69,9 +75,9 @@ function BlockPreview({ html, selected, onSelect, size }) {
   useEffect(() => mark(frame.current?.contentDocument, selected, true), [selected]);
 
   return (
-    <div className={size === 'phone' ? 'preview-stage preview-phone' : 'preview-stage'}>
+    <FitStage size={size}>
       <iframe ref={frame} className="preview-frame" title="Template preview" srcDoc={html} onLoad={onLoad} sandbox="allow-same-origin" />
-    </div>
+    </FitStage>
   );
 }
 
@@ -117,10 +123,13 @@ export default function BlockEditor({ template, brands, general }) {
       try {
         const { html: compiled } = await engine(designToMjml(design, { brand, preview: true }), { validationLevel: 'soft' });
         const options = updatesOptions(design, brand);
+        const productOptions = productsOptions(design, brand);
+        const products = brand?.products?.length ? pickProducts(brand.products, productOptions.productIds) : SAMPLE_PRODUCTS;
         setHtml(renderEmail({
           templateHtml: compiled,
           bodyHtml: SAMPLE_MESSAGE,
           updatesHtml: renderUpdatesHtml(updates.slice(0, options.limit), { ...options, timeZone: general.timeZone }),
+          productsHtml: renderProductsHtml(products, productOptions),
           subject: 'Sample subject',
           preheader: 'Sample preview text',
           contact: SAMPLE_CONTACT,

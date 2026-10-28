@@ -16,7 +16,7 @@ export const MERGE_TAGS = [
   { tag: 'year', label: 'Year' },
 ];
 
-export const TEMPLATE_TAGS = [{ tag: 'content', label: 'Message' }, { tag: 'updates', label: 'Product updates' }, { tag: 'preheader', label: 'Preview text' }, ...MERGE_TAGS];
+export const TEMPLATE_TAGS = [{ tag: 'content', label: 'Message' }, { tag: 'updates', label: 'Product updates' }, { tag: 'products', label: 'Products' }, { tag: 'preheader', label: 'Preview text' }, ...MERGE_TAGS];
 
 export const SAMPLE_CONTACT = { first_name: 'Alex', last_name: 'Rivera', email: 'alex@example.com' };
 
@@ -75,12 +75,14 @@ export function mergeValues({ contact = {}, general = {}, brand = null, subject 
 }
 
 // The full HTML of one email. Every email gets an unsubscribe link: a template without one has a
-// line added at the bottom. updatesHtml (from renderUpdatesHtml) goes where it says {{updates}}.
-export function renderEmail({ templateHtml, bodyHtml, updatesHtml = '', subject, preheader, contact, general, brand, unsubscribeUrl }) {
+// line added at the bottom. updatesHtml (from renderUpdatesHtml) goes where it says {{updates}},
+// and productsHtml (renderProductsHtml) where it says {{products}}.
+export function renderEmail({ templateHtml, bodyHtml, updatesHtml = '', productsHtml = '', subject, preheader, contact, general, brand, unsubscribeUrl }) {
   let html = templateHtml || DEFAULT_LAYOUT;
   if (!hasTag(html, 'content')) html = insertBeforeBodyEnd(html, '{{content}}');
   html = html.replace(/\{\{\s*content\s*\}\}/g, () => bodyHtml || '');
   html = html.replace(/\{\{\s*updates\s*\}\}/g, () => updatesHtml || '');
+  html = html.replace(/\{\{\s*products\s*\}\}/g, () => productsHtml || '');
   if (preheader && !hasTag(html, 'preheader')) html = insertAfterBodyStart(html, PREHEADER);
   if (!hasTag(html, 'unsubscribe_url')) html = insertBeforeBodyEnd(html, UNSUBSCRIBE_FOOTER);
   const values = mergeValues({ contact, general, brand, subject, preheader, unsubscribeUrl });
@@ -90,6 +92,7 @@ export function renderEmail({ templateHtml, bodyHtml, updatesHtml = '', subject,
 export const renderSubject = (subject, contact, general, brand) => mergeValues({ contact, general, brand, subject }).subject;
 
 export const templateHasUpdates = (html) => hasTag(html || '', 'updates');
+export const templateHasProducts = (html) => hasTag(html || '', 'products');
 
 const ENTITIES = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', rsquo: '’', lsquo: '‘', rdquo: '”', ldquo: '“',

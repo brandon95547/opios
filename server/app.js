@@ -46,7 +46,8 @@ export function createApp({ dataDir, production = false, basePath = '', setupCod
     res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'same-origin', 'X-Frame-Options': 'DENY' });
     if (production) {
       // Pictures in emails come from anywhere on the web; scripts only from Opios itself.
-      res.set('Content-Security-Policy', "default-src 'self'; img-src * data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src 'self' about:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
+      // Previews load the web fonts a template names (Google Fonts), as mail apps do.
+      res.set('Content-Security-Policy', "default-src 'self'; img-src * data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; frame-src 'self' about:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'");
     }
     next();
   });

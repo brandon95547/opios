@@ -2,10 +2,11 @@
 // contacts by the sender (sender.js).
 import express from 'express';
 import { isEmail, normalizeEmail } from '../shared/email.js';
-import { SAMPLE_CONTACT, templateHasUpdates } from '../shared/render.js';
+import { SAMPLE_CONTACT, templateHasProducts, templateHasUpdates } from '../shared/render.js';
 import { renderUpdatesHtml, selectUpdates } from '../shared/updates.js';
-import { updatesOptions } from '../shared/design.js';
-import { getBrand, updateCandidates } from './brands.js';
+import { pickProducts, renderProductsHtml } from '../shared/products.js';
+import { productsOptions, updatesOptions } from '../shared/design.js';
+import { getBrand, listBrands, updateCandidates } from './brands.js';
 import { now, transaction } from './db.js';
 import { fail, idParam, ids, text } from './http.js';
 import { buildMessage, describeError } from './mailer.js';
@@ -49,6 +50,14 @@ export function updatesFor(db, { brandId, mode, ids: chosen }, template, general
   const options = updatesOptions(template.design ? JSON.parse(template.design) : null, brand);
   const list = selectUpdates(updateCandidates(db, brandId), { mode, ids: chosen, limit: options.limit });
   return { list, html: renderUpdatesHtml(list, { ...options, timeZone: general.timeZone }) };
+}
+
+// The brand's products as the template's Products block shows them.
+export function productsFor(db, brandId, template) {
+  if (!brandId || !templateHasProducts(template?.html)) return '';
+  const brand = listBrands(db).find((b) => b.id === brandId);
+  const options = productsOptions(template.design ? JSON.parse(template.design) : null, brand);
+  return renderProductsHtml(pickProducts(brand?.products || [], options.productIds), options);
 }
 
 const cleanIds = (value) => ids(value).slice(0, 50);
@@ -125,6 +134,7 @@ export function campaignsRouter({ db, settings, sender }) {
         bodyHtml: String(req.body?.body_html ?? ''),
         templateHtml: template?.html,
         updatesHtml: updates.html,
+        productsHtml: productsFor(db, brand?.id, template),
       },
       contact,
       unsubscribe: unsubscribeFor(general, smtp, 'test', brand),
@@ -202,8 +212,8 @@ export function campaignsRouter({ db, settings, sender }) {
       for (const p of people) add.run(c.id, p.id, p.email);
       const carry = db.prepare('INSERT OR IGNORE INTO campaign_updates (campaign_id, update_id, position) VALUES (?, ?, ?)');
       updates.list.forEach((u, i) => carry.run(c.id, u.id, i));
-      db.prepare("UPDATE campaigns SET status = 'sending', template_html = ?, updates_html = ?, started_at = ?, updated_at = ? WHERE id = ?")
-        .run(template.html, updates.html, now(), now(), c.id);
+      db.prepare("UPDATE campaigns SET status = 'sending', template_html = ?, updates_html = ?, products_html = ?, started_at = ?, updated_at = ? WHERE id = ?")
+        .run(template.html, updates.html, productsFor(db, c.brand_id, template), now(), now(), c.id);
     });
     sender.kick();
     res.json(get(c.id));

@@ -23,7 +23,8 @@ const BRAND_LIST = `
   FROM brands b ORDER BY b.name COLLATE NOCASE`;
 
 export function listBrands(db) {
-  const products = db.prepare(`SELECT p.id, p.brand_id, p.name, p.url, (SELECT COUNT(*) FROM updates u WHERE u.product_id = p.id) AS updates
+  const products = db.prepare(`SELECT p.id, p.brand_id, p.name, p.url, p.description, p.version, p.image_url,
+    (SELECT COUNT(*) FROM updates u WHERE u.product_id = p.id) AS updates
     FROM products p ORDER BY p.name COLLATE NOCASE`).all();
   return db.prepare(BRAND_LIST).all().map((b) => ({ ...b, products: products.filter((p) => p.brand_id === b.id) }));
 }
@@ -137,7 +138,13 @@ export function brandsRouter({ db, onBrandChanged = () => {} }) {
   const cleanProduct = (body) => {
     const name = oneLine(body?.name, 80);
     if (!name) fail(400, 'Give the product a name.');
-    return { name, url: webAddress(body?.url, 'The product’s web address') };
+    return {
+      name,
+      url: webAddress(body?.url, 'The product’s web address'),
+      description: text(body?.description, 400),
+      version: oneLine(body?.version, 30),
+      image_url: webAddress(body?.image_url, 'The picture'),
+    };
   };
 
   router.post('/brands/:id/products', (req, res) => {
@@ -145,7 +152,8 @@ export function brandsRouter({ db, onBrandChanged = () => {} }) {
     if (!getBrand(db, brandId)) fail(404, 'That brand no longer exists.');
     const p = cleanProduct(req.body);
     if (db.prepare('SELECT 1 FROM products WHERE brand_id = ? AND name = ?').get(brandId, p.name)) fail(409, `This brand already has ${p.name}.`);
-    db.prepare('INSERT INTO products (brand_id, name, url, created_at) VALUES (?, ?, ?, ?)').run(brandId, p.name, p.url, now());
+    db.prepare('INSERT INTO products (brand_id, name, url, description, version, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(brandId, p.name, p.url, p.description, p.version, p.image_url, now());
     res.status(201).json(listBrands(db).find((x) => x.id === brandId));
   });
 
@@ -154,7 +162,8 @@ export function brandsRouter({ db, onBrandChanged = () => {} }) {
     const p = cleanProduct(req.body);
     const product = db.prepare('SELECT brand_id FROM products WHERE id = ?').get(id) || fail(404, 'That product no longer exists.');
     if (db.prepare('SELECT 1 FROM products WHERE brand_id = ? AND name = ? AND id <> ?').get(product.brand_id, p.name, id)) fail(409, `This brand already has ${p.name}.`);
-    db.prepare('UPDATE products SET name = ?, url = ? WHERE id = ?').run(p.name, p.url, id);
+    db.prepare('UPDATE products SET name = ?, url = ?, description = ?, version = ?, image_url = ? WHERE id = ?')
+      .run(p.name, p.url, p.description, p.version, p.image_url, id);
     res.json(listBrands(db).find((x) => x.id === product.brand_id));
   });
 

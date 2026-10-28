@@ -27,6 +27,7 @@ export function buildMessage({ smtp, general, brand = null, message, contact, un
     templateHtml: message.templateHtml,
     bodyHtml: message.bodyHtml,
     updatesHtml: message.updatesHtml,
+    productsHtml: message.productsHtml,
     subject: message.subject,
     preheader: message.preheader,
     contact,

@@ -6,7 +6,8 @@ import { ChevronLeft, MailCheck, Send } from 'lucide-react';
 import { api } from '../api.js';
 import { SAMPLE_CONTACT, renderEmail, renderSubject, templateHasUpdates } from '../../shared/render.js';
 import { renderUpdatesHtml, selectUpdates } from '../../shared/updates.js';
-import { updatesOptions } from '../../shared/design.js';
+import { productsOptions, updatesOptions } from '../../shared/design.js';
+import { pickProducts, renderProductsHtml } from '../../shared/products.js';
 import { isEmail } from '../../shared/email.js';
 import { Dialog, ErrorNote, Loading, PageHeader, insertAtCursor, number, plural, useLoad, useToast } from '../ui.jsx';
 import Editor from '../components/Editor.jsx';
@@ -143,18 +144,24 @@ export default function Compose({ message, onSent }) {
   const updatesHtml = useMemo(() => (hasUpdates && candidates.data
     ? renderUpdatesHtml(selectUpdates(candidates.data, { mode: draft.updates_mode, ids: draft.update_ids, limit: updateOptions.limit }), { ...updateOptions, timeZone: general?.timeZone })
     : ''), [hasUpdates, candidates.data, draft.updates_mode, draft.update_ids, updateOptions, general]);
+  const productsHtml = useMemo(() => {
+    if (!brand || !template || !/\{\{\s*products\s*\}\}/.test(template.html)) return '';
+    const options = productsOptions(template.design, brand);
+    return renderProductsHtml(pickProducts(brand.products, options.productIds), options);
+  }, [brand, template]);
   const body = useDeferredValue(draft.body_html);
   const html = useMemo(() => (d ? renderEmail({
     templateHtml: template?.html,
     bodyHtml: body,
     updatesHtml,
+    productsHtml,
     subject: draft.subject,
     preheader: draft.preheader,
     contact: SAMPLE_CONTACT,
     general,
     brand,
     unsubscribeUrl: '#',
-  }) : ''), [d, template, general, brand, body, updatesHtml, draft.subject, draft.preheader]);
+  }) : ''), [d, template, general, brand, body, updatesHtml, productsHtml, draft.subject, draft.preheader]);
 
   if (data.error) return <ErrorNote error={data.error} onRetry={data.reload} />;
   if (!d) return <Loading />;

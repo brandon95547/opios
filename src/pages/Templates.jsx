@@ -5,7 +5,8 @@ import { Copy, LayoutTemplate, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '../api.js';
 import { SAMPLE_BODY, SAMPLE_CONTACT, renderEmail } from '../../shared/render.js';
 import { SAMPLE_UPDATES, renderUpdatesHtml } from '../../shared/updates.js';
-import { updatesOptions } from '../../shared/design.js';
+import { productsOptions, updatesOptions } from '../../shared/design.js';
+import { SAMPLE_PRODUCTS, pickProducts, renderProductsHtml } from '../../shared/products.js';
 import { Dialog, Empty, ErrorNote, Loading, PageHeader, formatDate, plural, useConfirm, useLoad, useToast } from '../ui.jsx';
 import { EmailFrame } from '../components/EmailPreview.jsx';
 
@@ -14,6 +15,7 @@ export function Thumb({ html, design, brand, general, title }) {
     templateHtml: html,
     bodyHtml: SAMPLE_BODY,
     updatesHtml: renderUpdatesHtml(SAMPLE_UPDATES, updatesOptions(design, brand)),
+    productsHtml: renderProductsHtml(brand?.products?.length ? pickProducts(brand.products, productsOptions(design, brand).productIds) : SAMPLE_PRODUCTS, productsOptions(design, brand)),
     subject: 'Sample',
     contact: SAMPLE_CONTACT,
     general,

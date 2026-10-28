@@ -92,3 +92,49 @@ test('updates as email HTML: escaped, only web links, dated in the chosen time z
   ], 5);
   assert.deepEqual(picked.map((u) => u.id), [4, 1]);
 });
+
+test('the Classic template follows the rules for email that works in every common mail app', async () => {
+  const { default: mjml } = await import('mjml');
+  const { default: juice } = await import('juice');
+  const { STARTER_DESIGNS, designToMjml, productsOptions, updatesOptions } = await import('../shared/design.js');
+  const { renderUpdatesHtml } = await import('../shared/updates.js');
+  const { renderProductsHtml } = await import('../shared/products.js');
+  const design = structuredClone(STARTER_DESIGNS.classic.design);
+  for (const b of design.blocks) {
+    if (b.type === 'masthead') b.image = 'https://example.com/wordmark.png';
+    if (b.type === 'cards') b.items.forEach((i) => { i.image = 'https://example.com/card.jpg'; });
+    if (b.type === 'callout') { b.image = 'https://example.com/moon.png'; b.buttonHref = 'https://example.com/donate'; }
+    if (b.type === 'footer') { b.logo = 'https://example.com/logo.png'; b.ornament = 'https://example.com/moons.png'; }
+  }
+  const brand = { id: 1, name: 'Phansora', heading: 'Phansora Updates', website: 'https://phansora.com', color: '#111111' };
+  const updates = [1, 2, 3].map((n) => ({ id: n, kind: 'new', title: `Update ${n}`, body: 'A sentence about it.', link: 'https://example.com/u', image_url: 'https://example.com/u.jpg', product_name: 'Talari', happened_at: '2026-10-2' + n + 'T12:00:00Z' }));
+  const products = [1, 2, 3, 4, 5].map((n) => ({ id: n, name: `Product ${n}`, version: '1.0', description: 'What it does.', url: 'https://example.com/p', image_url: 'https://example.com/p.jpg' }));
+  const { html: template } = await mjml(designToMjml(design, { brand }), { validationLevel: 'soft' });
+  const html = juice(renderEmail({
+    templateHtml: template,
+    bodyHtml: '<p>Hi {{first_name}},</p><p>The news.</p>',
+    updatesHtml: renderUpdatesHtml(updates, updatesOptions(design, brand)),
+    productsHtml: renderProductsHtml(products, productsOptions(design, brand)),
+    subject: 'October', preheader: 'What’s new', contact: { first_name: 'Ann', email: 'ann@example.com' },
+    general: { address: '1 Main St' }, brand, unsubscribeUrl: 'https://example.com/u/abc?b=1',
+  }), { preserveImportant: true });
+
+  assert.ok(Buffer.byteLength(html) < 102 * 1024, `under Gmail’s 102 KB clipping limit (${Math.round(Buffer.byteLength(html) / 1024)} KB)`);
+  assert.match(html, /<meta name="viewport"/);
+  assert.match(html, /<title>October<\/title>/);
+  assert.match(html, /max-width:600px/, '600 pixels wide');
+  assert.match(html, /<!--\[if mso/, 'markup for Outlook for Windows');
+  assert.match(html, /role="presentation"/, 'layout tables marked as such for screen readers');
+  assert.doesNotMatch(html, /<script|display:\s*(flex|grid)|position:\s*(absolute|fixed)/i, 'no scripts, flexbox, grid or positioning');
+  for (const img of html.match(/<img\b[^>]*>/g)) {
+    assert.match(img, /\salt(="|[\s>])/, `alt text, or an empty alt for decoration: ${img.slice(0, 80)}`);
+    assert.match(img, /\s(width|height)="\d+"/, `a size Outlook reads: ${img.slice(0, 80)}`);
+    assert.match(img, /\ssrc="https:\/\//, `a full web address: ${img.slice(0, 80)}`);
+  }
+  for (const [, href] of html.matchAll(/\shref="([^"]*)"/g)) {
+    if (href.startsWith('https://fonts.googleapis.com')) continue;
+    assert.match(href, /^(https:\/\/|mailto:)/, `a link that works from an inbox: ${href}`);
+  }
+  assert.doesNotMatch(html, /\{\{[a-z_]+\}\}/, 'every tag filled');
+  assert.match(html, /Georgia/, 'a fallback for the web font');
+});

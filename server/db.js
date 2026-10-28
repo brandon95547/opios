@@ -176,6 +176,13 @@ const MIGRATIONS = [
     for (const t of STARTER_TEMPLATES) add.run(t.name, t.html, at, at);
   },
   (db) => db.exec(BRANDS),
+  // Products carry what the newsletter's Products block shows of them.
+  (db) => db.exec(`
+    ALTER TABLE products ADD COLUMN description TEXT NOT NULL DEFAULT '';
+    ALTER TABLE products ADD COLUMN version TEXT NOT NULL DEFAULT '';
+    ALTER TABLE products ADD COLUMN image_url TEXT NOT NULL DEFAULT '';
+    ALTER TABLE campaigns ADD COLUMN products_html TEXT;
+  `),
 ];
 
 function migrate(db) {

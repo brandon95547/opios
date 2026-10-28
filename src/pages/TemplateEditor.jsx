@@ -5,7 +5,8 @@ import { ChevronLeft } from 'lucide-react';
 import { api } from '../api.js';
 import { SAMPLE_BODY, SAMPLE_CONTACT, TEMPLATE_TAGS, renderEmail } from '../../shared/render.js';
 import { SAMPLE_UPDATES, renderUpdatesHtml } from '../../shared/updates.js';
-import { updatesOptions } from '../../shared/design.js';
+import { productsOptions, updatesOptions } from '../../shared/design.js';
+import { SAMPLE_PRODUCTS, renderProductsHtml } from '../../shared/products.js';
 import { Dialog, ErrorNote, Loading, PageHeader, insertAtCursor, useLoad, useToast } from '../ui.jsx';
 import EmailPreview from '../components/EmailPreview.jsx';
 import BlockEditor from './BlockEditor.jsx';
@@ -35,6 +36,7 @@ function Form({ template, general, brands }) {
     templateHtml: form.html,
     bodyHtml: SAMPLE_BODY,
     updatesHtml: renderUpdatesHtml(SAMPLE_UPDATES, { ...updatesOptions(null, brand), timeZone: general.timeZone }),
+    productsHtml: renderProductsHtml(brand?.products?.length ? brand.products : SAMPLE_PRODUCTS, productsOptions(null, brand)),
     subject: 'Sample subject',
     preheader: 'Sample preview text',
     contact: SAMPLE_CONTACT,

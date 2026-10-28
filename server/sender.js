@@ -79,7 +79,7 @@ export function createSender({ db, settings, log = console }) {
         smtp,
         general,
         brand,
-        message: { subject: campaign.subject, preheader: campaign.preheader, bodyHtml: campaign.body_html, templateHtml: campaign.template_html, updatesHtml: campaign.updates_html },
+        message: { subject: campaign.subject, preheader: campaign.preheader, bodyHtml: campaign.body_html, templateHtml: campaign.template_html, updatesHtml: campaign.updates_html, productsHtml: campaign.products_html },
         contact: { email: r.email, first_name: r.first_name, last_name: r.last_name },
         unsubscribe: unsubscribeFor(general, smtp, r.token, brand),
       }));

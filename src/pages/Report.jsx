@@ -54,6 +54,7 @@ export default function Report({ message: m, reload }) {
     templateHtml: m.template_html,
     bodyHtml: m.body_html,
     updatesHtml: m.updates_html,
+    productsHtml: m.products_html,
     subject: m.subject,
     preheader: m.preheader,
     contact: SAMPLE_CONTACT,

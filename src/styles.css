@@ -567,3 +567,15 @@ details.card[open] .field { margin-bottom: 12px; }
 .update-order .icon-button { width: 28px; height: 28px; }
 .update-meta .badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .update-meta { min-width: 0; }
+
+/* Lists inside a block's settings (cards, footer links) */
+.item-list { display: flex; flex-direction: column; gap: 12px; }
+.item-card { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.item-tools { display: flex; align-items: center; gap: 2px; }
+.item-tools .muted { margin-right: auto; font-size: 13px; font-weight: 600; }
+.item-tools .icon-button { width: 28px; height: 28px; }
+
+/* The desktop preview, drawn 640 pixels wide and scaled to the space it has. */
+.preview-desktop { display: block; overflow: hidden; height: max(520px, calc(100vh - 220px)); }
+.preview-scaled { transform-origin: 0 0; }
+.preview-scaled .preview-frame { height: 100%; }
