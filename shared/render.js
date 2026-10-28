@@ -13,6 +13,7 @@ export const MERGE_TAGS = [
   { tag: 'address', label: 'Mailing address' },
   { tag: 'unsubscribe_url', label: 'Unsubscribe link' },
   { tag: 'subject', label: 'Subject' },
+  { tag: 'date', label: 'Today’s date' },
   { tag: 'year', label: 'Year' },
 ];
 
@@ -52,6 +53,16 @@ const insertBeforeBodyEnd = (html, piece) => (/<\/body>/i.test(html)
 const PREHEADER = '<div data-preheader style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all">{{preheader}}</div>';
 const UNSUBSCRIBE_FOOTER = '<p style="margin:24px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#777;text-align:center">Don’t want these emails? <a href="{{unsubscribe_url}}" style="color:#777">Unsubscribe</a>.</p>';
 
+// The day an email is sent, such as "October 28, 2026", in the time zone in Settings.
+export function today(timeZone) {
+  const options = { month: 'long', day: 'numeric', year: 'numeric' };
+  try {
+    return new Date().toLocaleDateString('en-US', { ...options, timeZone: timeZone || undefined });
+  } catch {
+    return new Date().toLocaleDateString('en-US', options);
+  }
+}
+
 export function mergeValues({ contact = {}, general = {}, brand = null, subject = '', preheader = '', unsubscribeUrl = '#' }) {
   const first = contact.first_name || '';
   const last = contact.last_name || '';
@@ -66,6 +77,7 @@ export function mergeValues({ contact = {}, general = {}, brand = null, subject 
     brand_url: brand?.website || '',
     address: general.address || '',
     unsubscribe_url: unsubscribeUrl,
+    date: today(general.timeZone),
     year: String(new Date().getFullYear()),
   };
   // The subject and preview text can hold tags of their own ("{{first_name}}, your May update").

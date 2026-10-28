@@ -161,6 +161,7 @@ export function BlockSettings({ block, onChange, brand }) {
               </div>
             )}
           <TextField label="Line below" value={block.tagline} onChange={(tagline) => set({ tagline })} maxLength={120} />
+          <Check label="Show the date it’s sent, under the masthead" checked={block.showDate} onChange={(showDate) => set({ showDate })} />
           {padding}
         </div>
       );
@@ -178,7 +179,10 @@ export function BlockSettings({ block, onChange, brand }) {
         <div className="stack">
           <p className="muted">The brand’s products, with the picture, version and description set for each in Settings › Brands. Untick the ones to leave out; the arrows set the order.</p>
           <ProductPicker products={brand?.products || []} ids={block.productIds} onChange={(productIds) => set({ productIds })} />
-          <Segmented label="Cards in a row" value={block.columns} options={[[2, 'Two'], [3, 'Three']]} onChange={(columns) => set({ columns })} />
+          <Segmented label="Layout" value={block.layout} options={[['rows', 'Rows'], ['grid', 'Grid']]} onChange={(layout) => set({ layout })} />
+          {block.layout === 'rows'
+            ? <p className="field-hint">One product to a row: its picture on the left, its words beside it, like the Cards block.</p>
+            : <Segmented label="Cards in a row" value={block.columns} options={[[2, 'Two'], [3, 'Three']]} onChange={(columns) => set({ columns })} />}
           <Check label="Show versions" checked={block.showVersions} onChange={(showVersions) => set({ showVersions })} />
           <Check label="Show pictures" checked={block.showImages} onChange={(showImages) => set({ showImages })} />
           <TextField label="Link words" value={block.linkLabel} onChange={(linkLabel) => set({ linkLabel })} maxLength={40} />
@@ -251,7 +255,7 @@ export function BlockSettings({ block, onChange, brand }) {
     case 'content':
       return (
         <div className="stack">
-          <p className="muted">Each message you write goes here. Its text, pictures and links are set in the template’s colors and font.</p>
+          <p className="muted">A place for each newsletter’s own words. You don’t write them here: you write them in <strong>Messages › New message</strong>, each time you send one, and they appear in this spot, in the template’s colors and font. Move this block to change where they go.</p>
           {padding}
         </div>
       );
@@ -259,14 +263,15 @@ export function BlockSettings({ block, onChange, brand }) {
       return (
         <div className="stack">
           <p className="muted">The brand’s product updates: the newest ones no newsletter has carried yet, or the ones you choose when writing the message.</p>
-          <Segmented label="Layout" value={block.layout} options={[['list', 'List'], ['featured', 'Featured']]} onChange={(layout) => set({ layout })} />
+          <Segmented label="Layout" value={block.layout} options={[['bullets', 'Bullets'], ['list', 'List'], ['featured', 'Featured']]} onChange={(layout) => set({ layout })} />
+          {block.layout === 'bullets' && <p className="field-hint">A bulleted list under each product’s name: the title, then its details. No dates.</p>}
           {block.layout === 'featured' && <p className="field-hint">The newest large, with its picture beside it; the rest in two columns below.</p>}
           <TextField label="Title (optional)" value={block.title} onChange={(title) => set({ title })} maxLength={120} />
-          <NumberField label="At most, automatically" value={block.limit} min={1} max={20} unit="updates" onChange={(limit) => set({ limit })} />
+          <NumberField label="At most, automatically" value={block.limit} min={1} max={50} unit="updates" onChange={(limit) => set({ limit })} />
           <TextField label="Link words" value={block.linkLabel} onChange={(linkLabel) => set({ linkLabel })} maxLength={40} />
-          <Check label="Show each update’s date" checked={block.showDates} onChange={(showDates) => set({ showDates })} />
-          <Check label="Show the product’s name" checked={block.showProducts} onChange={(showProducts) => set({ showProducts })} />
-          <Check label="Show pictures" checked={block.showImages} onChange={(showImages) => set({ showImages })} />
+          {block.layout !== 'bullets' && <Check label="Show each update’s date" checked={block.showDates} onChange={(showDates) => set({ showDates })} />}
+          <Check label={block.layout === 'bullets' ? 'Group them under each product’s name' : 'Show the product’s name'} checked={block.showProducts} onChange={(showProducts) => set({ showProducts })} />
+          {block.layout !== 'bullets' && <Check label="Show pictures" checked={block.showImages} onChange={(showImages) => set({ showImages })} />}
         </div>
       );
     case 'image':

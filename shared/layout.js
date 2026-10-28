@@ -28,6 +28,17 @@ export function fluidGrid(items, { columns, gap = 24, align = 'left' }, render) 
   return `<div style="font-size:0;text-align:${align}">${body}</div>`;
 }
 
+// Two columns of set widths (a picture and its words, say), side by side where there's room
+// and stacked on a phone, with Outlook's table around them.
+export function twoColumns([leftWidth, leftHtml], [rightWidth, rightHtml], gap = 20) {
+  const col = (width, html, last) => `<div class="ob-col" style="display:inline-block;width:100%;max-width:${width}px;vertical-align:top;font-size:16px;text-align:left${last ? '' : `;margin-right:${gap}px`}">${html}</div>`;
+  return `<div style="font-size:0;text-align:left"><!--[if mso]><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="${leftWidth}" valign="top"><![endif]-->`
+    + col(leftWidth, leftHtml, false)
+    + `<!--[if mso]></td><td width="${rightWidth}" valign="top" style="padding-left:${gap}px"><![endif]-->`
+    + col(rightWidth, rightHtml, true)
+    + '<!--[if mso]></td></tr></table><![endif]--></div>';
+}
+
 // A thin line across, made of a border so every mail app draws it the same.
 export const line = (color, margin = '0') => `<div style="border-top:1px solid ${color};font-size:1px;line-height:1px;margin:${margin}">&nbsp;</div>`;
 

@@ -37,8 +37,9 @@ export function formatDay(iso, timeZone) {
 }
 
 // The updates as email HTML: tables, styles on each tag, about 600 pixels wide, as every mail
-// app (Outlook included) lays it out. Nothing at all when there are no updates. Two layouts:
-// a list, or "featured", the newest large with its picture beside it and the rest in two columns.
+// app (Outlook included) lays it out. Nothing at all when there are no updates. Three layouts:
+// a list, "featured" (the newest large with its picture beside it, the rest in two columns), and
+// "bullets" (a bulleted list under each product's name, without dates).
 export function renderUpdatesHtml(updates, options = {}) {
   if (!updates?.length) return '';
   const o = { ...DEFAULT_UPDATES_BLOCK, ...options };
@@ -50,6 +51,29 @@ export function renderUpdatesHtml(updates, options = {}) {
     ? `<tr><td style="padding:24px 32px 4px;font-family:${headingFont};font-size:21px;line-height:1.3;font-weight:bold;color:${c.heading}">${esc(o.title)}</td></tr>`
     : '';
   const table = (rows) => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse">${heading}${rows}</table>`;
+
+  if (o.layout === 'bullets') {
+    // Bullets as a table (a cell for the dot, one for the words), since mail apps indent a real
+    // list differently. Grouped by product in the order the products first appear.
+    const groups = [];
+    for (const u of updates) {
+      const key = o.showProducts ? u.product_name || '' : '';
+      let g = groups.find((x) => x.key === key);
+      if (!g) groups.push((g = { key, items: [] }));
+      g.items.push(u);
+    }
+    const bullet = (u) => {
+      const href = safeHref(u.link);
+      const title = href
+        ? `<a href="${esc(href)}" style="color:${c.heading};text-decoration:underline">${esc(u.title)}</a>`
+        : esc(u.title);
+      return `<tr><td width="18" valign="top" style="width:18px;padding:0 0 10px;font-family:${font};font-size:16px;line-height:1.55;color:${c.heading}">&bull;</td>`
+        + `<td valign="top" style="padding:0 0 10px;font-family:${font};font-size:16px;line-height:1.55;color:${c.text}"><span style="font-family:${headingFont};font-size:18px;font-weight:600;color:${c.heading}">${title}</span>${u.body ? ` &mdash; ${esc(u.body).replace(/\r?\n/g, ' ')}` : ''}</td></tr>`;
+    };
+    const blocks = groups.map((g, i) => `${g.key ? `<p style="margin:${i ? 18 : 0}px 0 8px;font-family:${font};font-size:13px;line-height:1.4;letter-spacing:2px;text-transform:uppercase;color:${c.muted}">${esc(g.key)}</p>` : ''}`
+      + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${g.items.map(bullet).join('')}</table>`).join('');
+    return table(`<tr><td style="padding:12px 32px 4px">${blocks}</td></tr>`);
+  }
 
   if (o.layout === 'featured') {
     const meta = (u) => [date(u), o.showProducts ? u.product_name : ''].filter(Boolean).map(esc).join(' &middot; ');

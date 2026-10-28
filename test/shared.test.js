@@ -136,5 +136,9 @@ test('the Classic template follows the rules for email that works in every commo
     assert.match(href, /^(https:\/\/|mailto:)/, `a link that works from an inbox: ${href}`);
   }
   assert.doesNotMatch(html, /\{\{[a-z_]+\}\}/, 'every tag filled');
+  const { today } = await import('../shared/render.js');
+  assert.equal(html.split(today()).length - 1, 1, 'the date it’s sent, once');
+  assert.doesNotMatch(html, /Oct 2\d, 2026/, 'no date on each update');
+  assert.equal((html.match(/&bull;|•/g) || []).length, 3, 'the updates as bullets');
   assert.match(html, /Georgia/, 'a fallback for the web font');
 });

@@ -13,7 +13,7 @@ import { Dialog, PageHeader, useToast } from '../ui.jsx';
 import { FitStage, SizeToggle } from '../components/EmailPreview.jsx';
 import { BlockSettings, StyleSettings } from '../components/BlockSettings.jsx';
 
-const SAMPLE_MESSAGE = '<p>Hi {{first_name|there}},</p><p>This is where each message goes: the text you write when you send a newsletter, in this template’s colors and font.</p>';
+const SAMPLE_MESSAGE = '<p>Hi {{first_name|there}},</p><p><em>Sample text.</em> Each newsletter’s own words go here: you write them in Messages › New message, each time you send one. The template keeps the design; the message changes every issue.</p>';
 const ADDABLE = ['text', 'image', 'button', 'section', 'updates', 'products', 'cards', 'callout', 'columns', 'divider', 'spacer', 'masthead', 'header', 'footer'];
 
 const summary = (b) => {
@@ -129,7 +129,7 @@ export default function BlockEditor({ template, brands, general }) {
           templateHtml: compiled,
           bodyHtml: SAMPLE_MESSAGE,
           updatesHtml: renderUpdatesHtml(updates.slice(0, options.limit), { ...options, timeZone: general.timeZone }),
-          productsHtml: renderProductsHtml(products, productOptions),
+          productsHtml: renderProductsHtml(products, { ...productOptions, placeholders: true }),
           subject: 'Sample subject',
           preheader: 'Sample preview text',
           contact: SAMPLE_CONTACT,

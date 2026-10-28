@@ -57,7 +57,7 @@ const WEB_FONTS = {
 };
 
 const DEFAULTS = {
-  masthead: { eyebrow: 'News ✦ Ideas ✦ Updates', image: '', imageWidth: 520, title: '{{brand_name}}', tagline: '{{brand_heading}}', size: 60, padding: 28 },
+  masthead: { eyebrow: 'News ✦ Ideas ✦ Updates', image: '', imageWidth: 520, title: '{{brand_name}}', tagline: '{{brand_heading}}', showDate: true, size: 60, padding: 28 },
   header: { text: '{{brand_heading}}', logo: true, align: 'center', background: 'brand', color: '#ffffff', size: 26, padding: 32 },
   section: { title: 'Latest updates', tagline: 'News ✦ Features ✦ Improvements', rule: true, padding: 20 },
   text: { html: '<p>Write something here.</p>', align: 'left', padding: 16 },
@@ -112,7 +112,7 @@ export const STARTER_DESIGNS = {
         block('masthead'),
         block('section', { title: 'Latest updates', tagline: 'News ✦ Features ✦ Improvements', rule: false }),
         block('content', { padding: 8 }),
-        block('updates', { title: '', layout: 'featured', limit: 3, showProducts: false }),
+        block('updates', { title: '', layout: 'bullets', limit: 20, showProducts: true }),
         block('section', { title: 'Our products', tagline: 'What we make' }),
         block('products'),
         block('section', { title: 'Coming soon', tagline: 'On the horizon' }),
@@ -170,13 +170,13 @@ export function normalizeDesign(input) {
     const base = { id: /^[a-z0-9]{4,16}$/.test(b.id) ? b.id : newId(), type: b.type };
     const padding = num(b.padding, 0, 80, d.padding);
     switch (b.type) {
-      case 'masthead': return { ...base, eyebrow: str(b.eyebrow, 120), image: str(b.image, 2000), imageWidth: num(b.imageWidth, 120, 536, d.imageWidth), title: str(b.title, 80, d.title), tagline: str(b.tagline, 120), size: num(b.size, 24, 80, d.size), padding };
+      case 'masthead': return { ...base, eyebrow: str(b.eyebrow, 120), image: str(b.image, 2000), imageWidth: num(b.imageWidth, 120, 536, d.imageWidth), title: str(b.title, 80, d.title), tagline: str(b.tagline, 120), showDate: b.showDate !== false, size: num(b.size, 24, 80, d.size), padding };
       case 'header': return { ...base, text: str(b.text, 200, d.text), logo: b.logo !== false, align: align(b.align), background: color(b.background, d.background), color: color(b.color, d.color), size: num(b.size, 16, 48, d.size), padding };
       case 'section': return { ...base, title: str(b.title, 60, d.title), tagline: str(b.tagline, 80), rule: b.rule !== false, padding };
       case 'text': return { ...base, html: str(b.html, 50_000, d.html), align: align(b.align === undefined ? 'left' : b.align), padding };
       case 'content': return { ...base, padding };
-      case 'updates': return { ...base, title: str(b.title, 120, d.title), limit: num(b.limit, 1, 20, d.limit), showDates: b.showDates !== false, showProducts: b.showProducts !== false, showImages: b.showImages !== false, layout: b.layout === 'featured' ? 'featured' : 'list', linkLabel: str(b.linkLabel, 40, d.linkLabel) || d.linkLabel };
-      case 'products': return { ...base, productIds: idList(b.productIds), columns: b.columns === 2 ? 2 : 3, showVersions: b.showVersions !== false, showImages: b.showImages !== false, linkLabel: str(b.linkLabel, 40, d.linkLabel) || d.linkLabel };
+      case 'updates': return { ...base, title: str(b.title, 120, d.title), limit: num(b.limit, 1, 50, d.limit), showDates: b.showDates !== false, showProducts: b.showProducts !== false, showImages: b.showImages !== false, layout: ['featured', 'bullets'].includes(b.layout) ? b.layout : 'list', linkLabel: str(b.linkLabel, 40, d.linkLabel) || d.linkLabel };
+      case 'products': return { ...base, productIds: idList(b.productIds), layout: b.layout === 'grid' ? 'grid' : 'rows', columns: b.columns === 2 ? 2 : 3, showVersions: b.showVersions !== false, showImages: b.showImages !== false, linkLabel: str(b.linkLabel, 40, d.linkLabel) || d.linkLabel };
       case 'cards': return {
         ...base,
         items: (Array.isArray(b.items) ? b.items : []).slice(0, 8).map((i) => ({
@@ -230,7 +230,7 @@ export function updatesOptions(design, brand) {
 export function productsOptions(design, brand) {
   const d = normalizeDesign(design);
   const b = d.blocks.find((x) => x.type === 'products') || DEFAULT_PRODUCTS_BLOCK;
-  return { productIds: b.productIds, columns: b.columns, showVersions: b.showVersions, showImages: b.showImages, linkLabel: b.linkLabel, ...theme(d, brand) };
+  return { productIds: b.productIds, layout: b.layout, columns: b.columns, showVersions: b.showVersions, showImages: b.showImages, linkLabel: b.linkLabel, ...theme(d, brand) };
 }
 
 // A design as MJML. With preview on, empty pictures show as gray boxes to click, and every
@@ -262,7 +262,11 @@ export function designToMjml(design, { brand, preview = false } = {}) {
         const tagline = b.tagline
           ? `<mj-text align="center" color="${attr(s.textColor)}" padding="10px 32px 0"><span style="font-family:${s.font};${caps(13, 5)}">${text(b.tagline)}</span></mj-text>`
           : '';
-        return section(b, `<mj-column>${eyebrow}${mark}${tagline}<mj-divider border-color="${attr(s.ruleColor)}" border-width="1px" padding="22px 32px 0" /></mj-column>`, { padding: b.padding, bottom: 0 });
+        // The issue's one date: the day it is sent.
+        const date = b.showDate
+          ? `<mj-text align="center" color="${attr(s.mutedColor)}" padding="14px 32px 0"><span style="font-family:${s.font};${caps(13, 3)}">{{date}}</span></mj-text>`
+          : '';
+        return section(b, `<mj-column>${eyebrow}${mark}${tagline}${date}<mj-divider border-color="${attr(s.ruleColor)}" border-width="1px" padding="18px 32px 0" /></mj-column>`, { padding: b.padding, bottom: 0 });
       }
       case 'header': {
         const logo = b.logo && link(brand?.logo_url) ? `<mj-image src="${attr(brand.logo_url)}" alt="${attr(brand.name || '')}" width="180px" align="${b.align}" padding="0 0 12px" />` : '';
