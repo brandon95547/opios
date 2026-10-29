@@ -1,6 +1,7 @@
 // Pictures for emails: uploaded here, kept in data/media, and served publicly at /media/…,
 // because every reader's mail app has to be able to load them. Only PNG, JPEG, GIF and WebP:
-// mail apps don't show SVG, and a picture is checked by its first bytes, not its name.
+// mail apps don't show SVG, and a picture is checked by its first bytes, not its name. Each is
+// kept as an email carries it (pictures.js): at most 1200 px wide, as JPEG, PNG or GIF.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,6 +9,7 @@ import express from 'express';
 import { now } from './db.js';
 import { fail, idParam } from './http.js';
 import { publicBase } from './settings.js';
+import { forEmail } from './pictures.js';
 
 const KINDS = [
   { type: 'image/png', ext: 'png', test: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
@@ -41,17 +43,24 @@ export function mediaRouter({ db, dataDir, basePath, settings }) {
     res.json(db.prepare('SELECT * FROM media ORDER BY id DESC').all().map((row) => withUrl(req, row)));
   });
 
-  router.post('/media', express.raw({ type: () => true, limit: '8mb' }), (req, res) => {
+  router.post('/media', express.raw({ type: () => true, limit: '20mb' }), async (req, res) => {
     const body = req.body;
     if (!Buffer.isBuffer(body) || body.length < 12) fail(400, 'Choose a picture to upload.');
-    const kind = KINDS.find((k) => k.test(body)) || fail(415, 'Upload a PNG, JPEG, GIF or WebP picture.');
-    const file = `${crypto.randomBytes(12).toString('base64url')}.${kind.ext}`;
+    if (!KINDS.some((k) => k.test(body))) fail(415, 'Upload a PNG, JPEG, GIF or WebP picture.');
+    let picture;
+    try {
+      picture = await forEmail(body);
+    } catch {
+      fail(415, 'That picture could not be read. Save it again as a PNG or JPEG and upload that.');
+    }
+    const file = `${crypto.randomBytes(12).toString('base64url')}.${picture.ext}`;
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, file), body);
+    fs.writeFileSync(path.join(dir, file), picture.buf);
     let name = 'picture';
     try { name = decodeURIComponent(req.get('x-file-name') || 'picture'); } catch { /* keep the default */ }
     name = name.replace(/[\r\n]/g, ' ').slice(0, 200);
-    const { lastInsertRowid } = db.prepare('INSERT INTO media (file, name, type, size, created_at) VALUES (?, ?, ?, ?, ?)').run(file, name, kind.type, body.length, now());
+    const { lastInsertRowid } = db.prepare('INSERT INTO media (file, name, type, size, width, height, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(file, name, picture.type, picture.buf.length, picture.width, picture.height, now());
     res.status(201).json(withUrl(req, db.prepare('SELECT * FROM media WHERE id = ?').get(Number(lastInsertRowid))));
   });
 

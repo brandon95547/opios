@@ -1,5 +1,6 @@
 // Turning a template and a message into the email one contact receives. The browser uses this for
 // previews and the server for sending, so what is previewed is what is sent.
+import { INNER } from './layout.js';
 
 export const MERGE_TAGS = [
   { tag: 'first_name', label: 'First name' },
@@ -86,13 +87,35 @@ export function mergeValues({ contact = {}, general = {}, brand = null, subject 
   return values;
 }
 
+// The message's pictures, never wider than the column: Outlook for Windows ignores CSS and draws
+// a picture at its width attribute, so one uploaded at 1200 px (twice the column, for sharp
+// screens) is given the column's width and its height to match. Every other mail app scales it
+// down with max-width. A picture with a style of its own is left as it is.
+export function fitImages(html, max = INNER) {
+  return String(html || '').replace(/<img\b[^>]*>/gi, (tag) => {
+    const num = (name) => Number(new RegExp(`\\s${name}\\s*=\\s*["']?(\\d+)`, 'i').exec(tag)?.[1]) || 0;
+    const set = (t, name, value) => (new RegExp(`\\s${name}\\s*=`, 'i').test(t)
+      ? t.replace(new RegExp(`(\\s${name}\\s*=\\s*)(["']?)\\d+\\2`, 'i'), `$1"${value}"`)
+      : t.replace(/^<img\b/i, `<img ${name}="${value}"`));
+    let out = tag;
+    const width = num('width');
+    if (width > max) {
+      const height = num('height');
+      out = set(out, 'width', max);
+      if (height) out = set(out, 'height', Math.round((height * max) / width));
+    }
+    if (!/\sstyle\s*=/i.test(out)) out = out.replace(/^<img\b/i, '<img style="display:block;max-width:100%;height:auto;border:0"');
+    return out;
+  });
+}
+
 // The full HTML of one email. Every email gets an unsubscribe link: a template without one has a
 // line added at the bottom. updatesHtml (from renderUpdatesHtml) goes where it says {{updates}},
 // and productsHtml (renderProductsHtml) where it says {{products}}.
 export function renderEmail({ templateHtml, bodyHtml, updatesHtml = '', productsHtml = '', subject, preheader, contact, general, brand, unsubscribeUrl }) {
   let html = templateHtml || DEFAULT_LAYOUT;
   if (!hasTag(html, 'content')) html = insertBeforeBodyEnd(html, '{{content}}');
-  html = html.replace(/\{\{\s*content\s*\}\}/g, () => bodyHtml || '');
+  html = html.replace(/\{\{\s*content\s*\}\}/g, () => fitImages(bodyHtml));
   html = html.replace(/\{\{\s*updates\s*\}\}/g, () => updatesHtml || '');
   html = html.replace(/\{\{\s*products\s*\}\}/g, () => productsHtml || '');
   if (preheader && !hasTag(html, 'preheader')) html = insertAfterBodyStart(html, PREHEADER);

@@ -9,6 +9,7 @@ import { contactsRouter } from './contacts.js';
 import { templatesRouter, recompileBrandTemplates } from './templates.js';
 import { brandsRouter, apiRouter } from './brands.js';
 import { mediaFiles, mediaRouter } from './media.js';
+import { fitUploadedPictures } from './pictures.js';
 import { campaignsRouter } from './campaigns.js';
 import { settingsRouter, overviewRouter, exportRouter } from './routes.js';
 import { unsubscribeRouter } from './unsubscribe.js';
@@ -35,6 +36,8 @@ function errors(err, req, res, next) { // eslint-disable-line no-unused-vars
 
 export function createApp({ dataDir, production = false, basePath = '', setupCode = '', trustProxy = 'loopback', log = console } = {}) {
   const db = openDb(dataDir);
+  // Pictures uploaded before uploads were fitted for email: sized once, in the background.
+  fitUploadedPictures({ db, dataDir, log }).catch((err) => log.error('Fitting uploaded pictures:', err));
   const settings = createSettings(db, loadKey(dataDir));
   const sender = createSender({ db, settings, log });
   const auth = createAuth(db, { cookiePath: basePath || '/', setupCode, production });

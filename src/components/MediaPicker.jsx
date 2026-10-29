@@ -1,5 +1,6 @@
 // Choosing a picture: upload one, pick one uploaded before, or paste a web address. Pictures in
-// emails need a public address, which uploads get from Opios.
+// emails need a public address, which uploads get from Opios. onChange(url, picture): an
+// uploaded picture also comes with its size ({ width, height }), a typed address without.
 import { useId, useRef, useState } from 'react';
 import { Image as ImageIcon, Trash2, Upload, X } from 'lucide-react';
 import { api, uploadPicture } from '../api.js';
@@ -23,7 +24,7 @@ function Library({ onPick, onClose }) {
         <ul className="library">
           {media.data.map((m) => (
             <li key={m.id}>
-              <button type="button" className="library-pick" onClick={() => onPick(m.url)} title={m.name}>
+              <button type="button" className="library-pick" onClick={() => onPick(m)} title={m.name}>
                 <img src={m.url} alt="" loading="lazy" />
                 <span className="library-name">{m.name}</span>
               </button>
@@ -48,7 +49,8 @@ export default function MediaPicker({ label = 'Picture', value, onChange, hint }
     if (!file) return;
     setBusy(true);
     try {
-      onChange((await uploadPicture(file)).url);
+      const picture = await uploadPicture(file);
+      onChange(picture.url, picture);
     } catch (err) {
       toast(err.message, 'error');
     } finally {
@@ -71,7 +73,7 @@ export default function MediaPicker({ label = 'Picture', value, onChange, hint }
         <input ref={input} type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden onChange={(e) => upload(e.target.files[0])} />
       </div>
       {hint && <span className="field-hint">{hint}</span>}
-      {library && <Library onPick={(url) => { onChange(url); setLibrary(false); }} onClose={() => setLibrary(false)} />}
+      {library && <Library onPick={(m) => { onChange(m.url, m); setLibrary(false); }} onClose={() => setLibrary(false)} />}
     </div>
   );
 }

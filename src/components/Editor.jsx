@@ -56,10 +56,12 @@ function LinkDialog({ open, initial, onSave, onClose }) {
 function ImageDialog({ open, onSave, onClose }) {
   const [src, setSrc] = useState('');
   const [alt, setAlt] = useState('');
+  // An uploaded picture's size, which the email gives Outlook as its width (render.js fitImages).
+  const [size, setSize] = useState(null);
   return (
     <Dialog open={open} onClose={onClose} title="Picture">
-      <form onSubmit={(e) => { e.preventDefault(); if (src.trim()) onSave({ src: src.trim(), alt: alt.trim() }); }}>
-        <MediaPicker label="Picture" value={src} onChange={setSrc} hint="Upload one, or give the address of a picture already online. Every reader’s mail app loads it from there." />
+      <form onSubmit={(e) => { e.preventDefault(); if (src.trim()) onSave({ src: src.trim(), alt: alt.trim(), ...(size || {}) }); }}>
+        <MediaPicker label="Picture" value={src} onChange={(url, picture) => { setSrc(url); setSize(picture?.width ? { width: picture.width, height: picture.height } : null); }} hint="Upload one, or give the address of a picture already online. Every reader’s mail app loads it from there." />
         <label className="field">
           <span className="field-label">Description</span>
           <input value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="What the picture shows" />

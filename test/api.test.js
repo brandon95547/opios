@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SMTPServer } from 'smtp-server';
+import sharp from 'sharp';
 import { createApp } from '../server/app.js';
 
 const quiet = { error() {} };
@@ -455,7 +456,7 @@ test('pictures upload, are checked by their bytes, and are served publicly for m
   const o = await startOpios();
   try {
     await o.call('POST', '/api/auth/setup', { username: 'me', password: 'long-enough-1' });
-    const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+    const png = await sharp({ create: { width: 40, height: 20, channels: 4, background: { r: 20, g: 90, b: 200, alpha: 0.5 } } }).png().toBuffer();
     const anonymous = await fetch(`${o.base}/api/media`, { method: 'POST', headers: { 'content-type': 'image/png' }, body: png });
     assert.equal(anonymous.status, 401, 'needs the login');
     assert.equal((await o.callRaw('POST', '/api/media', Buffer.alloc(0), { 'content-type': 'image/png' })).status, 400, 'an empty upload is turned away');
@@ -467,6 +468,20 @@ test('pictures upload, are checked by their bytes, and are served publicly for m
     assert.equal(file.headers.get('content-type'), 'image/png');
     const notPicture = await o.callRaw('POST', '/api/media', Buffer.from('<svg onload="alert(1)"></svg>'), { 'content-type': 'image/png' });
     assert.equal(notPicture.status, 415);
+    // Only a PNG's first bytes, and nothing a picture could be drawn from.
+    const header = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+    assert.equal((await o.callRaw('POST', '/api/media', header, { 'content-type': 'image/png' })).status, 415);
+    assert.deepEqual([sent.body.width, sent.body.height], [40, 20]);
+
+    // A phone photo is made 1200 px wide, as a JPEG, and the library knows its size.
+    const photo = await sharp({ create: { width: 3000, height: 2000, channels: 3, noise: { type: 'gaussian', mean: 128, sigma: 40 } } }).png().toBuffer();
+    const big = await o.callRaw('POST', '/api/media', photo, { 'content-type': 'image/png', 'x-file-name': 'IMG_0001.png' });
+    assert.equal(big.status, 201);
+    assert.match(big.body.url, /\.jpg$/);
+    assert.deepEqual([big.body.width, big.body.height, big.body.type], [1200, 800, 'image/jpeg']);
+    const kept = fs.readFileSync(path.join(o.dataDir, 'media', big.body.file));
+    assert.deepEqual([(await sharp(kept).metadata()).width, big.body.size], [1200, kept.length]);
+    assert.ok(kept.length < photo.length / 4);
   } finally {
     await o.close();
   }

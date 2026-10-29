@@ -183,6 +183,12 @@ const MIGRATIONS = [
     ALTER TABLE products ADD COLUMN image_url TEXT NOT NULL DEFAULT '';
     ALTER TABLE campaigns ADD COLUMN products_html TEXT;
   `),
+  // A picture's size in pixels, so the message can give Outlook its width (pictures.js; filled
+  // in for pictures uploaded before this by fitUploadedPictures).
+  (db) => db.exec(`
+    ALTER TABLE media ADD COLUMN width INTEGER;
+    ALTER TABLE media ADD COLUMN height INTEGER;
+  `),
 ];
 
 function migrate(db) {
